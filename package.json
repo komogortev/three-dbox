@@ -1,0 +1,40 @@
+{
+  "name": "three-dbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@base/audio": "link:../SHARED/packages/audio",
+    "@base/camera-three": "link:../SHARED/packages/camera-three",
+    "@base/engine-core": "link:../SHARED/packages/engine-core",
+    "@base/gameplay": "link:../SHARED/packages/gameplay",
+    "@base/input": "link:../SHARED/packages/input",
+    "@base/player-three": "link:../SHARED/packages/player-three",
+    "@base/scene-builder": "link:../SHARED/packages/scene-builder",
+    "@base/threejs-engine": "link:../SHARED/packages/threejs-engine",
+    "@base/ui": "link:../SHARED/packages/ui",
+    "pinia": "^2.2.0",
+    "three": "^0.172.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "^22.0.1",
+    "@types/three": "^0.172.0",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/tsconfig": "^0.7.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "~5.7.3",
+    "vite": "^6.2.4",
+    "vite-plugin-pwa": "^0.21.0",
+    "vue-tsc": "^2.2.8"
+  }
+}
