@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ThreeModule } from '@base/threejs-engine'
 import { InputModule, mergeBindings } from '@base/input'
@@ -8,6 +8,8 @@ import { DBOX_DEFAULT_BINDINGS } from '@/config/dboxBindings'
 import { DboxSceneModule } from '@/modules/DboxSceneModule'
 import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
+import DboxHud from '@/hud/DboxHud.vue'
+import type { HudSnapshot } from '@/hud/types'
 
 const router  = useRouter()
 const context = useShellContext()
@@ -43,6 +45,22 @@ const sceneModule = new DboxSceneModule({
   // Doomfist is 2.1 m — eye level at ~88% height (OW1 first-person feel).
   firstPersonEyeOffsetY: 1.85,
 })
+
+// ── HUD state ──────────────────────────────────────────────────────────────
+const hudSnapshot = reactive<HudSnapshot>({
+  health: 250, healthMax: 250,
+  shields: 0, shieldsMax: 150,
+  abilities: [],
+})
+let hudRaf = 0
+
+/** Map ability IDs → display key labels from active bindings (not hardcoded). */
+const abilityKeyLabels: Record<string, string> = {
+  'hand-cannon':      'LMB',
+  'rocket-punch':     'RMB',
+  'rising-uppercut':  fk(kb.ability_primary),
+  'seismic-slam':     fk(kb.ability_secondary),
+}
 
 // ── Time control state ─────────────────────────────────────────────────────
 const timeScale = ref(1.0)
@@ -111,6 +129,30 @@ onMounted(async () => {
   await engine.mountChild('scene', sceneModule)
   worldReady.value = true
 
+  // Poll HUD state each frame from the scene module.
+  const pollHud = (): void => {
+    const snap = sceneModule.getHudSnapshot()
+    hudSnapshot.health = snap.health
+    hudSnapshot.healthMax = snap.healthMax
+    hudSnapshot.shields = snap.shields
+    hudSnapshot.shieldsMax = snap.shieldsMax
+    // Stamp key labels from active bindings (settings-aware, not hardcoded).
+    for (const a of snap.abilities) {
+      const label = abilityKeyLabels[a.id]
+      if (label) a.key = label
+    }
+    // Replace abilities array only when length changes; otherwise patch in-place.
+    if (hudSnapshot.abilities.length !== snap.abilities.length) {
+      hudSnapshot.abilities = snap.abilities
+    } else {
+      for (let i = 0; i < snap.abilities.length; i++) {
+        Object.assign(hudSnapshot.abilities[i]!, snap.abilities[i]!)
+      }
+    }
+    hudRaf = requestAnimationFrame(pollHud)
+  }
+  hudRaf = requestAnimationFrame(pollHud)
+
   container.value.focus()
 
   const offAxis = context.eventBus.on('input:axis', (raw) => {
@@ -127,6 +169,7 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
+  cancelAnimationFrame(hudRaf)
   window.removeEventListener('keydown', onKeyDown)
   clearTimeout(hintTimer)
   await engine.unmount()
@@ -250,6 +293,9 @@ onUnmounted(async () => {
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Time</dt><dd>P pause · F step 1 frame · R resume · [ ] slower / faster</dd></div>
       </dl>
     </div>
+
+    <!-- HUD overlay (health + abilities) -->
+    <DboxHud v-if="worldReady" :snapshot="hudSnapshot" />
 
     <!-- Fixture legend (bottom-left) — same layout as sandbox -->
     <div

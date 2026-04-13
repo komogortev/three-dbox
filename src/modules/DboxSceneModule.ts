@@ -10,6 +10,7 @@ import { DboxCharacterEntity } from '@/entities/DboxCharacterEntity'
 import { DBOX_ARENA_WALLS, DBOX_ARENA_BOXES, buildArenaWallMeshes } from '@/collision'
 import type { ChampionConfig } from '@/champions/ChampionConfig'
 import { DOOMFIST_CONFIG } from '@/champions/doomfist'
+import type { HudSnapshot } from '@/hud/types'
 
 export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
   descriptor?: SceneDescriptor
@@ -42,6 +43,17 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
   getCarryImpulseDecayPerSecond(): number {
     return this.cfg.carryImpulseDecayPerSecond ?? this.champion.movement.carryImpulseDecayPerSecond
+  }
+
+  /** Current HUD state for the display overlay. Dummy health until a real health system lands. */
+  getHudSnapshot(): HudSnapshot {
+    return {
+      health: 250,
+      healthMax: 250,
+      shields: 0,
+      shieldsMax: 150,
+      abilities: this.lab.getHudAbilities(),
+    }
   }
 
   /** Expose entity for external access (e.g. DboxLab blob collision). */

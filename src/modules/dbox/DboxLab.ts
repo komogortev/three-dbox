@@ -7,6 +7,7 @@ import { RocketPunchPointer } from './rocketPunchPointer'
 import type { WallPlane, WallBox } from '@/collision'
 import { resolveCircleVsPlane, resolveCircleVsBox } from '@/collision'
 import type { ChampionConfig } from '@/champions/ChampionConfig'
+import type { AbilityHudEntry } from '@/hud/types'
 
 // ── Rendering / algorithm constants (not gameplay-tunable) ───────────────────
 const SLAM_CONE_SEG = 22
@@ -578,6 +579,49 @@ export class DboxLab {
     if (this.fireRocketPunchFromHoldSeconds(this.pendingRocketPunchHoldS)) {
       this.pendingRocketPunchHoldS = null
     }
+  }
+
+  /** Snapshot of ability cooldown state for HUD display. */
+  getHudAbilities(): AbilityHudEntry[] {
+    const now = performance.now() * 0.001
+
+    const cdLeft = (lastUse: number, cd: number): number =>
+      Math.max(0, cd - (now - lastUse))
+
+    return [
+      {
+        id: 'hand-cannon',
+        name: 'Hand Cannon',
+        key: 'LMB',
+        cooldownMax: 0,
+        cooldownLeft: 0,
+        isActive: false,
+      },
+      {
+        id: 'rocket-punch',
+        name: 'Rocket Punch',
+        key: 'RMB',
+        cooldownMax: this.cfg.rocketPunch.cooldownS,
+        cooldownLeft: cdLeft(this.lastPunchMs, this.cfg.rocketPunch.cooldownS),
+        isActive: this.pendingRocketPunchHoldS != null,
+      },
+      {
+        id: 'rising-uppercut',
+        name: 'Rising Uppercut',
+        key: 'Q',
+        cooldownMax: this.cfg.risingUppercut.cooldownS,
+        cooldownLeft: cdLeft(this.lastUppercutMs, this.cfg.risingUppercut.cooldownS),
+        isActive: false,
+      },
+      {
+        id: 'seismic-slam',
+        name: 'Seismic Slam',
+        key: 'E',
+        cooldownMax: this.cfg.seismicSlam.cooldownS,
+        cooldownLeft: cdLeft(this.lastSlamMs, this.cfg.seismicSlam.cooldownS),
+        isActive: this.slamHoldActive,
+      },
+    ]
   }
 
   private fireRocketPunchFromHoldSeconds(heldS: number): boolean {
