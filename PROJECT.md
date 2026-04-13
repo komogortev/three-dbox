@@ -23,7 +23,7 @@ A standalone game fork of `threejs-engine-dev`, extracting and extending the dbo
 
 ## Current state
 
-**Pre-fork.** The dbox scene lives in `threejs-engine-dev` as a locomotion lab. Three abilities are implemented and tested:
+**Phase 1 complete (2026-04-12).** Forked from `threejs-engine-dev`, wall collision implemented.
 
 | Ability | Input | Behavior | CD |
 |---------|-------|----------|----|
@@ -32,21 +32,23 @@ A standalone game fork of `threejs-engine-dev`, extracting and extending the dbo
 | Seismic Slam | E hold/release | Mouse-aim cone preview, dash to apex + downward slam, AoE knockback on blobs | 6s |
 
 Character: `dfist_base.glb` (Doomfist-style mesh, Trinity rig, meshopt + WebP).
-Environment: 100x100m terrain with pool, 5 landing-tier ramps (2–22m), knee/body obstacles, 5 NPC blobs.
+Environment: 80×80m walled arena inside 100×100m terrain. 3 angled interior walls + 2 box pillars. 5 NPC blobs.
 Camera: FPV/TPV toggle via Tab.
 Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 
-### What works well
+### What works
 
 - Punch carry velocity feel — speed and decay tuning is solid
 - Uppercut + slam cone targeting — mouse-aimed slam with terrain raycast
-- NPC blob physics — blobs react to uppercut lift and slam knockback
+- NPC blob physics — blobs react to uppercut lift, slam knockback, and wall bounce
 - Skim-jump off punch (space during carry) — extends punch travel into arc
+- **Wall collision** — punch at angle → slide deflection with 12% friction; head-on → full stop
+- Arena boundary walls (4 planes) + angled interior walls (3) + pillars (2) with visual edge meshes
 
 ### What's missing for game feel
 
-- **No wall collision.** Punch travels through everything — no wall-slide, no impact stop. This is the #1 gap.
-- **No arena walls/pillars.** Environment is open terrain. Need enclosed surfaces.
+- **No ChampionConfig** — ability params hardcoded in DboxLab, not config-driven; character entity can't read them
+- **Input remapping for abilities** — ability bindings (Q/E/RMB) not exposed in settings UI
 - **No damage/health system.** Blobs react to physics but have no HP.
 - **No round structure.** Freeform sandbox — no start/end/scoring.
 - **Meteor Strike not implemented.** Three abilities only.
@@ -58,10 +60,12 @@ Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 | Framework | Vue 3 + Vite | SPA, vue-router for menu/gameplay/settings |
 | 3D Engine | Three.js 0.172 via `@base/threejs-engine` | ThreeModule lifecycle |
 | Physics | `@base/player-three` PlayerController | Carry impulse + terrain sampling (not Rapier) |
+| Collision | `src/collision/WallCollider.ts` | Circle-vs-plane + circle-vs-box, slide math |
+| Character | `src/entities/DboxCharacterEntity.ts` | Post-tick correction layer over PlayerController |
 | Input | `@base/input` InputModule | Keyboard + gamepad, pointer lock, configurable bindings |
 | Camera | `@base/camera-three` | Close-follow preset, FPV/TPV toggle |
 | Scene | `@base/scene-builder` SceneDescriptor | Terrain + atmosphere + character config |
-| Abilities | `DboxLab` (harness-local) | Composed into `DboxSceneModule`, uses `GameplayLabHost` interface |
+| Abilities | `DboxLab` (local) | Composed into `DboxSceneModule`, uses `GameplayLabHost` interface |
 
 ## Alpha scope
 

@@ -16,21 +16,22 @@ A standalone combat sandbox game — OW1 late-era Doomfist physics brawler. Fork
 | `ROADMAP.md` | Alpha roadmap — 6 phases from fork to ship |
 | `STATE.md` | Current phase, what works, known issues, constants |
 
-### Source (post-fork)
+### Source
 | Path | Purpose |
 |------|---------|
 | `src/scenes/` | Arena scene descriptors |
-| `src/modules/` | DboxSceneModule + DboxLab (ability system) |
-| `src/modules/dbox/` | DboxLab, GameplayLabHost, RocketPunchPointer |
+| `src/modules/` | DboxSceneModule (orchestrator) |
+| `src/modules/dbox/` | DboxLab (abilities), GameplayLabHost, RocketPunchPointer |
+| `src/entities/` | DboxCharacterEntity — post-tick collision correction layer |
+| `src/collision/` | WallCollider (circle-vs-plane/box, slide math), dboxArenaWalls (geometry + visuals) |
 | `src/views/` | DboxView (gameplay), MenuView (nav), SettingsView |
-| `src/characters/` | Character descriptors |
 | `public/models/` | dfist_base.glb (Doomfist mesh) |
 | `public/characters/` | Animation packs |
 
 ## Key conventions
 
 - **link: deps** — all `@base/*` packages resolve via `link:../SHARED/packages/...` (not pnpm workspace protocol)
-- **Physics model** — `@base/player-three` PlayerController carry impulse system, NOT Rapier. Terrain sampling for ground. Wall collision is the main Phase 1 addition.
+- **Physics model** — `@base/player-three` PlayerController carry impulse system, NOT Rapier. Terrain sampling for ground. Wall collision via `DboxCharacterEntity` + `WallCollider` (post-tick correction layer — Phase 1 complete).
 - **Ability system** — `DboxLab` composes into `DboxSceneModule` via `GameplayLabHost` interface. Abilities use `PlayerController.setPlanarCarryVelocity`, `addPlanarCarryImpulse`, `applyVerticalAbilityImpulse`.
 - **Input bindings** — `@base/input` InputModule with `mergeBindings`. Dbox overrides: Q = `ability_primary` (uppercut), E = `ability_secondary` (slam), RMB = rocket punch (custom pointer handler, not InputModule).
 - **Camera** — `close-follow` preset via `@base/camera-three`, Tab toggles FPV/TPV.

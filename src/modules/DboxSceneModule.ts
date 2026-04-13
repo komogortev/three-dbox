@@ -48,7 +48,7 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     await super.onMount(container, context)
     const ctx = context as ThreeContext
 
-    // ── Character entity (collision correction layer) ───────────���───────
+    // ── Character entity (collision correction layer) ────────────────────
     this.entity = new DboxCharacterEntity(
       () => this.getPlayerController(),
       () => this.getCharacter(),

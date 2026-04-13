@@ -2,7 +2,8 @@
 
 ## Current phase
 
-**Phase 1: Wall Collision & Slide** — COMPLETE (2026-04-12).
+**Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-12).
+Phase 1: Wall Collision & Slide — COMPLETE (2026-04-12).
 
 Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 - 26 source files, 2 GLB assets (dfist_base.glb 1.5MB, animations_base.glb 728KB)
@@ -26,7 +27,7 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 
 ## Known issues
 
-- Character has minor scale issue (noted by user)
+- Character scale fixed: `modelFitHeight` set to 2.1 m (OW1 Doomfist ~7 ft), was inheriting sandbox Remy 1.78 m
 - Wall collision IMPLEMENTED — arena boundary walls + angled interior walls + pillars + slide mechanics
 - NPC blobs collide with walls (bounce) but have no health/damage system
 - Meteor Strike not implemented
@@ -35,7 +36,7 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 
 ## Blockers
 
-None blocking Phase 1. Wall collision work can begin.
+None. Phase 2 (Character & Input Polish) is next.
 
 ## Assets inventory
 

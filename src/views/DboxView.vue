@@ -34,6 +34,8 @@ const inputModule = new InputModule(
 const sceneModule = new DboxSceneModule({
   descriptor: dboxScene,
   cameraPreset: 'close-follow',
+  // Doomfist is 2.1 m — eye level at ~88% height (OW1 first-person feel).
+  firstPersonEyeOffsetY: 1.85,
 })
 
 // ── Time control state ─────────────────────────────────────────────────────

@@ -229,21 +229,20 @@ const DEFAULT_CONFIG: GameplaySceneConfig = {
 
 /**
  * Enables {@link PlayerController} movement logs in Vite dev.
- * - Default: **on** in dev (uses `console.log`, visible at default DevTools levels).
- * - Silence: `localStorage.setItem('debugPlayerMove','0')` then reload.
- * - Force on after silencing: `localStorage.removeItem('debugPlayerMove')` or set `'1'`.
- * - URL still works: `?debugMove=1` turns **on** even if localStorage was `'0'` (highest priority).
+ * - Default: **off** (opt-in to avoid console spam during normal play).
+ * - Enable: `localStorage.setItem('debugPlayerMove','1')` then reload.
+ * - URL override: `?debugMove=1` turns **on** regardless of localStorage.
  */
 function playerMovementDebugEnabled(): boolean {
   if (typeof window === 'undefined' || !import.meta.env.DEV) return false
   try {
     const sp = new URLSearchParams(window.location.search)
     if (sp.get('debugMove') === '1' || sp.get('debugMove') === 'true') return true
-    if (window.localStorage.getItem('debugPlayerMove') === '0') return false
+    if (window.localStorage.getItem('debugPlayerMove') === '1') return true
   } catch {
     /* private mode / no storage */
   }
-  return true
+  return false
 }
 
 // ─── Module ──────────────────────────────────────────────────────────────────
