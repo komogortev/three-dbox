@@ -23,7 +23,7 @@ A standalone game fork of `threejs-engine-dev`, extracting and extending the dbo
 
 ## Current state
 
-**Phase 1 complete (2026-04-12).** Forked from `threejs-engine-dev`, wall collision implemented.
+**Phase 2 in progress (2026-04-13).** Phase 1 complete (2026-04-12). Forked from `threejs-engine-dev`, wall collision + HUD overlay done.
 
 | Ability | Input | Behavior | CD |
 |---------|-------|----------|----|
