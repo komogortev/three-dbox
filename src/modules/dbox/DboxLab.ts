@@ -6,39 +6,14 @@ import type { GameplayLabHost } from './GameplayLabHost'
 import { RocketPunchPointer } from './rocketPunchPointer'
 import type { WallPlane, WallBox } from '@/collision'
 import { resolveCircleVsPlane, resolveCircleVsBox } from '@/collision'
+import type { ChampionConfig } from '@/champions/ChampionConfig'
 
-const CD_PUNCH_S = 4
-const CD_UPPERCUT_S = 6
-const CD_SLAM_S = 6
-const PUNCH_CHARGE_MAX_S = 1.4
-const PUNCH_SPEED_MIN = 78
-const PUNCH_SPEED_MAX = 152
-const PUNCH_SELF_LIFT_VY_MIN = 1.65
-const PUNCH_SELF_LIFT_VY_MAX = 3.15
-const UPPERCUT_FORWARD = 4
-/** Rising uppercut — `replace` in air so it always wins over gravity/fall. */
-const UPPERCUT_UP = 26
-const SLAM_DOWN = -24
-const SLAM_CONE_RANGE = 7.25
-const SLAM_CONE_DEG = 86
+// ── Rendering / algorithm constants (not gameplay-tunable) ───────────────────
 const SLAM_CONE_SEG = 22
 const SLAM_PREVIEW_Y = 0.045
-/** When mouse ray misses usable ground — sample point along mouse XZ up to this distance (m) from player. */
-const SLAM_MOUSE_FALLBACK_M = 20
 const SLAM_RAY_T_STEP = 0.4
 const SLAM_RAY_T_MAX = 280
 const SLAM_RAY_HIT_EPS_M = 0.38
-const SLAM_TO_APEX_SPEED_MIN = 8
-const SLAM_TO_APEX_SPEED_MAX = 22
-const UPPERCUT_VICTIM_LOCK_S = 0.6
-const UPPERCUT_HIT_RADIUS_XZ = 4.25
-const UPPERCUT_HIT_CONE_DEG = 105
-const UPPERCUT_HIT_MAX_Y_DELTA = 2.85
-const UPPERCUT_NPC_GRAVITY = 30
-const PUNCH_SKIM_MIN_CARRY = 22
-const UPPERCUT_LOCK_EMISSIVE = 0.95
-const BLOB_IDLE_EMISSIVE = 0.35
-const DEFAULT_UPPERCUT_NPC_MOVE_INTENT_FORWARD_BIAS = 0.85
 
 const BLOB_SPAWN_XZ: ReadonlyArray<readonly [number, number]> = [
   [19.0, 28.5],
@@ -47,10 +22,11 @@ const BLOB_SPAWN_XZ: ReadonlyArray<readonly [number, number]> = [
   [17.5, 30.0],
   [24.0, 27.0],
 ]
-
 const BLOB_RADIUS = 0.42
 const BLOB_COLOR = 0xe879f9
 const BLOB_EMISSIVE = 0x86198f
+const BLOB_IDLE_EMISSIVE = 0.35
+const UPPERCUT_LOCK_EMISSIVE = 0.95
 
 interface BlobNpc {
   mesh: THREE.Mesh
@@ -58,10 +34,6 @@ interface BlobNpc {
   vy: number
   vz: number
   lockRemaining: number
-}
-
-export interface DboxLabOptions {
-  uppercutNpcMoveIntentForwardBias?: number
 }
 
 interface SlamApex {
@@ -75,7 +47,6 @@ interface SlamApex {
  * Keyboard abilities use `input:action` (`ability_primary` / `ability_secondary`); rocket punch uses {@link RocketPunchPointer}.
  */
 export class DboxLab {
-  private readonly uppercutNpcMoveIntentForwardBias: number
   private pendingRocketPunchHoldS: number | null = null
   private lastPunchMs = -1e9
   private lastUppercutMs = -1e9
@@ -102,11 +73,8 @@ export class DboxLab {
 
   constructor(
     private readonly host: GameplayLabHost,
-    options: DboxLabOptions = {},
-  ) {
-    this.uppercutNpcMoveIntentForwardBias =
-      options.uppercutNpcMoveIntentForwardBias ?? DEFAULT_UPPERCUT_NPC_MOVE_INTENT_FORWARD_BIAS
-  }
+    private readonly cfg: ChampionConfig,
+  ) {}
 
   mount(container: HTMLElement, eventBus: EventBus, ctx: ThreeContext): void {
     this.slamHostCtx = ctx
@@ -186,7 +154,7 @@ export class DboxLab {
   handleJumpPressedEarly(): boolean {
     return this.host.getPlayerController().tryActivateRocketPunchSkimJump(
       this.host.getCharacter(),
-      PUNCH_SKIM_MIN_CARRY,
+      this.cfg.rocketPunch.skimMinCarry,
     )
   }
 
@@ -197,7 +165,7 @@ export class DboxLab {
 
   private onRocketPunchChargeEnd(heldSecondsRaw: number): void {
     const heldS = Math.min(
-      PUNCH_CHARGE_MAX_S,
+      this.cfg.rocketPunch.chargeMaxS,
       Math.max(0, heldSecondsRaw),
     )
     const snap = this.host.getPlayerController().getSnapshot()
@@ -250,7 +218,7 @@ export class DboxLab {
 
   private executeSlamOnKeyRelease(): void {
     const t = performance.now() * 0.001
-    if (t - this.lastSlamMs < CD_SLAM_S) return
+    if (t - this.lastSlamMs < this.cfg.seismicSlam.cooldownS) return
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return
     const ctx = this.slamHostCtx
@@ -266,16 +234,16 @@ export class DboxLab {
     if (dist > 0.06) {
       const inv = 1 / dist
       const v = THREE.MathUtils.clamp(
-        SLAM_TO_APEX_SPEED_MIN + dist * 0.75,
-        SLAM_TO_APEX_SPEED_MIN,
-        SLAM_TO_APEX_SPEED_MAX,
+        this.cfg.seismicSlam.toApexSpeedMin + dist * 0.75,
+        this.cfg.seismicSlam.toApexSpeedMin,
+        this.cfg.seismicSlam.toApexSpeedMax,
       )
       this.host.getPlayerController().setPlanarCarryVelocity(dx * inv * v, dz * inv * v)
     } else {
       this.host.getPlayerController().setPlanarCarryVelocity(0, 0)
     }
 
-    this.host.getPlayerController().applyVerticalAbilityImpulse(SLAM_DOWN, this.host.getCharacter(), {
+    this.host.getPlayerController().applyVerticalAbilityImpulse(this.cfg.seismicSlam.downSpeed, this.host.getCharacter(), {
       verticalBlend: 'replace',
     })
     this.applySlamToBlobsInCone(land.x, land.z, land.ySurf, f)
@@ -285,7 +253,7 @@ export class DboxLab {
 
   /**
    * Slam apex: mouse ray vs {@link GameplayLabHost#sampleTerrainSurfaceY} (first downward hit inside play disc);
-   * else a point up to {@link SLAM_MOUSE_FALLBACK_M} along mouse XZ from the player, clamped to the play disc.
+   * else a point up to `mouseFallbackM` along mouse XZ from the player, clamped to the play disc.
    */
   private resolveSlamApex(ctx: ThreeContext): SlamApex {
     const cam = ctx.camera
@@ -301,10 +269,6 @@ export class DboxLab {
     return this.slamMouseFallbackXZ(ctx)
   }
 
-  /**
-   * First ray segment below `sampleTerrain` (camera → ground). Requires mostly downward ray.
-   * @returns world XZ + surface Y, or `null` when no crossing is found.
-   */
   private raycastTerrainAlongMouse(O: THREE.Vector3, D: THREE.Vector3): SlamApex | null {
     if (D.y > -0.03) return null
     let startedAbove = false
@@ -336,8 +300,9 @@ export class DboxLab {
       dx /= flatLen
       dz /= flatLen
     }
-    let fx = px + dx * SLAM_MOUSE_FALLBACK_M
-    let fz = pz + dz * SLAM_MOUSE_FALLBACK_M
+    const fallback = this.cfg.seismicSlam.mouseFallbackM
+    let fx = px + dx * fallback
+    let fz = pz + dz * fallback
     const R = this.host.getPlayableRadius()
     const rad = Math.hypot(fx, fz)
     if (rad > R) {
@@ -410,8 +375,8 @@ export class DboxLab {
     const w = attr.array as Float32Array
     const fwdX = -Math.sin(facing)
     const fwdZ = -Math.cos(facing)
-    const half = THREE.MathUtils.degToRad(SLAM_CONE_DEG * 0.5)
-    const R = SLAM_CONE_RANGE
+    const half = THREE.MathUtils.degToRad(this.cfg.seismicSlam.coneDeg * 0.5)
+    const R = this.cfg.seismicSlam.coneRangeM
     let o = 0
     const y0 = this.host.sampleTerrainSurfaceY(landX, landZ) + SLAM_PREVIEW_Y
     w[o++] = landX
@@ -436,7 +401,7 @@ export class DboxLab {
   private applySlamToBlobsInCone(landX: number, landZ: number, ySurf: number, facing: number): void {
     const fwdX = -Math.sin(facing)
     const fwdZ = -Math.cos(facing)
-    const cosHalf = Math.cos(THREE.MathUtils.degToRad(SLAM_CONE_DEG * 0.5))
+    const cosHalf = Math.cos(THREE.MathUtils.degToRad(this.cfg.seismicSlam.coneDeg * 0.5))
     const y0 = ySurf + SLAM_PREVIEW_Y
     for (const b of this.blobs) {
       const bx = b.mesh.position.x
@@ -444,7 +409,7 @@ export class DboxLab {
       const dx = bx - landX
       const dz = bz - landZ
       const dist = Math.hypot(dx, dz)
-      if (dist > SLAM_CONE_RANGE || dist < 1e-4) continue
+      if (dist > this.cfg.seismicSlam.coneRangeM || dist < 1e-4) continue
       const inv = 1 / dist
       const nx = dx * inv
       const nz = dz * inv
@@ -452,7 +417,7 @@ export class DboxLab {
       if (dot < cosHalf) continue
       if (b.mesh.position.y < y0 - 2.5 || b.mesh.position.y > y0 + 6) continue
 
-      b.vy = Math.min(b.vy, SLAM_DOWN * 0.35)
+      b.vy = Math.min(b.vy, this.cfg.seismicSlam.downSpeed * 0.35)
       const knock = 3.2
       b.vx += nx * knock
       b.vz += nz * knock
@@ -483,7 +448,7 @@ export class DboxLab {
   }
 
   private tickBlobNpcs(dt: number): void {
-    const g = UPPERCUT_NPC_GRAVITY
+    const g = this.cfg.risingUppercut.npcGravity
     for (const b of this.blobs) {
       const mat = b.mesh.material as THREE.MeshStandardMaterial
       if (b.lockRemaining > 0) {
@@ -512,16 +477,14 @@ export class DboxLab {
       b.vx *= carryDecay
       b.vz *= carryDecay
 
-      // Wall collision for blobs
       for (const wall of this.wallPlanes) {
         const hit = resolveCircleVsPlane(b.mesh.position.x, b.mesh.position.z, BLOB_RADIUS, wall)
         if (hit) {
           b.mesh.position.x = hit.x
           b.mesh.position.z = hit.z
-          // Reflect velocity component along normal
           const dot = b.vx * hit.nx + b.vz * hit.nz
           if (dot < 0) {
-            b.vx -= 2 * dot * hit.nx * 0.6 // 0.6 = bounciness
+            b.vx -= 2 * dot * hit.nx * 0.6
             b.vz -= 2 * dot * hit.nz * 0.6
           }
         }
@@ -558,11 +521,12 @@ export class DboxLab {
     const facing = this.host.getPlayerController().getFacing()
     const fwdX = -Math.sin(facing)
     const fwdZ = -Math.cos(facing)
-    const cosHalf = Math.cos(THREE.MathUtils.degToRad(UPPERCUT_HIT_CONE_DEG * 0.5))
+    const cosHalf = Math.cos(THREE.MathUtils.degToRad(this.cfg.risingUppercut.hitConeDeg * 0.5))
     const snap = this.host.getPlayerController().getSnapshot()
     const forwardIntent01 = THREE.MathUtils.clamp(snap.moveIntent.y, 0, 1)
     const planarForward =
-      UPPERCUT_FORWARD + forwardIntent01 * this.uppercutNpcMoveIntentForwardBias
+      this.cfg.risingUppercut.forwardSpeed +
+      forwardIntent01 * this.cfg.risingUppercut.npcMoveIntentForwardBias
 
     for (const b of this.blobs) {
       const bx = b.mesh.position.x
@@ -571,16 +535,16 @@ export class DboxLab {
       const dx = bx - px
       const dz = bz - pz
       const dist = Math.hypot(dx, dz)
-      if (dist > UPPERCUT_HIT_RADIUS_XZ || dist < 1e-5) continue
-      if (Math.abs(by - py) > UPPERCUT_HIT_MAX_Y_DELTA) continue
+      if (dist > this.cfg.risingUppercut.hitRadiusXZ || dist < 1e-5) continue
+      if (Math.abs(by - py) > this.cfg.risingUppercut.hitMaxYDelta) continue
       const inv = 1 / dist
       const nx = dx * inv
       const nz = dz * inv
       const dot = nx * fwdX + nz * fwdZ
       if (dot < cosHalf) continue
 
-      b.lockRemaining = UPPERCUT_VICTIM_LOCK_S
-      b.vy = Math.max(b.vy, UPPERCUT_UP)
+      b.lockRemaining = this.cfg.risingUppercut.victimLockS
+      b.vy = Math.max(b.vy, this.cfg.risingUppercut.upSpeed)
       b.vx = fwdX * planarForward
       b.vz = fwdZ * planarForward
     }
@@ -589,15 +553,15 @@ export class DboxLab {
   private tryUppercut(): void {
     this.cancelSlamDueToInterrupt()
     const t = performance.now()
-    if (t * 0.001 - this.lastUppercutMs < CD_UPPERCUT_S) return
+    if (t * 0.001 - this.lastUppercutMs < this.cfg.risingUppercut.cooldownS) return
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return
 
     const f = this.host.getPlayerController().getFacing()
-    const fx = -Math.sin(f) * UPPERCUT_FORWARD
-    const fz = -Math.cos(f) * UPPERCUT_FORWARD
+    const fx = -Math.sin(f) * this.cfg.risingUppercut.forwardSpeed
+    const fz = -Math.cos(f) * this.cfg.risingUppercut.forwardSpeed
     this.host.getPlayerController().addPlanarCarryImpulse(fx, fz)
-    this.host.getPlayerController().applyVerticalAbilityImpulse(UPPERCUT_UP, this.host.getCharacter(), {
+    this.host.getPlayerController().applyVerticalAbilityImpulse(this.cfg.risingUppercut.upSpeed, this.host.getCharacter(), {
       verticalBlend: 'replace',
     })
     this.applyUppercutToNearbyBlobs()
@@ -618,21 +582,22 @@ export class DboxLab {
 
   private fireRocketPunchFromHoldSeconds(heldS: number): boolean {
     const t = performance.now() * 0.001
-    if (t - this.lastPunchMs < CD_PUNCH_S) return false
+    if (t - this.lastPunchMs < this.cfg.rocketPunch.cooldownS) return false
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return false
 
     this.cancelSlamDueToInterrupt()
 
-    const chargeT = PUNCH_CHARGE_MAX_S <= 1e-6 ? 1 : heldS / PUNCH_CHARGE_MAX_S
+    const chargeMax = this.cfg.rocketPunch.chargeMaxS
+    const chargeT = chargeMax <= 1e-6 ? 1 : heldS / chargeMax
     const shaped = Math.pow(chargeT, 1.12)
-    const speed = PUNCH_SPEED_MIN + (PUNCH_SPEED_MAX - PUNCH_SPEED_MIN) * shaped
+    const { speedMin, speedMax, selfLiftVyMin, selfLiftVyMax } = this.cfg.rocketPunch
+    const speed = speedMin + (speedMax - speedMin) * shaped
     const f = this.host.getPlayerController().getFacing()
     const fx = -Math.sin(f) * speed
     const fz = -Math.cos(f) * speed
     this.host.getPlayerController().setPlanarCarryVelocity(fx, fz)
-    const liftVy =
-      PUNCH_SELF_LIFT_VY_MIN + (PUNCH_SELF_LIFT_VY_MAX - PUNCH_SELF_LIFT_VY_MIN) * shaped
+    const liftVy = selfLiftVyMin + (selfLiftVyMax - selfLiftVyMin) * shaped
     this.host.getPlayerController().applyVerticalAbilityImpulse(liftVy, this.host.getCharacter(), {
       verticalBlend: 'replace',
     })
