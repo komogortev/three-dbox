@@ -2,8 +2,18 @@
 
 ## Current phase
 
-**Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-12).
+**Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-13).
 Phase 1: Wall Collision & Slide — COMPLETE (2026-04-12).
+
+### Phase 2 progress (2026-04-13)
+
+- [x] **HUD overlay** — OW1-style bottom-center bar: character portrait ("D" placeholder) + health bar (left), 4 ability slots with cooldown sweep/numbers (right)
+- [x] **Dynamic key labels** — HUD reads active bindings from settings, not hardcoded keys
+- [x] HUD architecture: DboxLab.getHudAbilities() → DboxSceneModule.getHudSnapshot() → DboxView rAF poll → DboxHud.vue (pure display, no game logic)
+- [x] Dummy health (250/250) + shields (0/150) ready for real health system
+- [ ] Health/damage system
+- [ ] Visual effects for abilities (punch trail, slam impact, uppercut arc)
+- [ ] Crosshair
 
 Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 - 26 source files, 2 GLB assets (dfist_base.glb 1.5MB, animations_base.glb 728KB)
@@ -24,6 +34,7 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 - [x] Time control: P pause, F step-frame, R resume, [ ] slow/fast
 - [x] Terrain: 100x100m with pool, 5 landing ramps (2–22m), obstacles (knee/body height)
 - [x] Input settings: configurable bindings, pointer lock
+- [x] HUD overlay: health bar + ability cooldown display (bottom-center)
 
 ## Known issues
 

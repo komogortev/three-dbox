@@ -47,9 +47,10 @@ Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 
 ### What's missing for game feel
 
-- **No ChampionConfig** — ability params hardcoded in DboxLab, not config-driven; character entity can't read them
-- **Input remapping for abilities** — ability bindings (Q/E/RMB) not exposed in settings UI
-- **No damage/health system.** Blobs react to physics but have no HP.
+- ~~**No ChampionConfig**~~ — DONE: `src/champions/ChampionConfig.ts` + `doomfist.ts`
+- ~~**Input remapping for abilities**~~ — DONE: settings bindings flow into HUD labels dynamically
+- **HUD overlay** — DONE (2026-04-13): health bar + ability cooldown display, settings-aware key labels
+- **No damage/health system.** Blobs react to physics but have no HP. HUD shows dummy 250/250 health.
 - **No round structure.** Freeform sandbox — no start/end/scoring.
 - **Meteor Strike not implemented.** Three abilities only.
 
