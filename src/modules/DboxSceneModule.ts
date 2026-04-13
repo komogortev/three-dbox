@@ -3,16 +3,19 @@ import type { ThreeContext } from '@base/threejs-engine'
 import type { SceneDescriptor } from '@base/scene-builder'
 import { CALIBRATION_POOL_BOUNDS } from '@/calibration/calibrationLayout'
 import { SandboxSceneModule } from './SandboxSceneModule'
-import { DboxLab, type DboxLabOptions } from './dbox/DboxLab'
+import { DboxLab } from './dbox/DboxLab'
 import type { GameplayLabHost } from './dbox/GameplayLabHost'
 import type { ThirdPersonSceneConfig } from './GameplaySceneModule'
 import { DboxCharacterEntity } from '@/entities/DboxCharacterEntity'
 import { DBOX_ARENA_WALLS, DBOX_ARENA_BOXES, buildArenaWallMeshes } from '@/collision'
+import type { ChampionConfig } from '@/champions/ChampionConfig'
+import { DOOMFIST_CONFIG } from '@/champions/doomfist'
 
-export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> &
-  DboxLabOptions & {
-    descriptor?: SceneDescriptor
-  }
+export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
+  descriptor?: SceneDescriptor
+  /** Override champion config. Defaults to {@link DOOMFIST_CONFIG}. */
+  champion?: ChampionConfig
+}
 
 /**
  * Sandbox calibration world + composed {@link DboxLab} (abilities, slam preview, NPC blobs)
@@ -22,21 +25,23 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> &
  */
 export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHost {
   private readonly lab: DboxLab
+  private readonly champion: ChampionConfig
   private entity: DboxCharacterEntity | null = null
   private arenaMeshes: THREE.Object3D[] = []
 
   constructor(options: DboxSceneModuleOptions = {}) {
-    const { uppercutNpcMoveIntentForwardBias, ...rest } = options
+    const { champion = DOOMFIST_CONFIG, ...rest } = options
     super({
       ...rest,
-      characterSpeed: rest.characterSpeed ?? 5.5,
-      carryImpulseDecayPerSecond: rest.carryImpulseDecayPerSecond ?? 8,
+      characterSpeed: rest.characterSpeed ?? champion.movement.walkSpeed,
+      carryImpulseDecayPerSecond: rest.carryImpulseDecayPerSecond ?? champion.movement.carryImpulseDecayPerSecond,
     })
-    this.lab = new DboxLab(this, { uppercutNpcMoveIntentForwardBias })
+    this.champion = champion
+    this.lab = new DboxLab(this, champion)
   }
 
   getCarryImpulseDecayPerSecond(): number {
-    return this.cfg.carryImpulseDecayPerSecond ?? 8
+    return this.cfg.carryImpulseDecayPerSecond ?? this.champion.movement.carryImpulseDecayPerSecond
   }
 
   /** Expose entity for external access (e.g. DboxLab blob collision). */
@@ -52,6 +57,7 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.entity = new DboxCharacterEntity(
       () => this.getPlayerController(),
       () => this.getCharacter(),
+      this.champion.collision,
     )
     this.entity.setCollisionGeometry(DBOX_ARENA_WALLS, DBOX_ARENA_BOXES)
 

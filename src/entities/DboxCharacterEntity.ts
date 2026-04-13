@@ -1,23 +1,14 @@
 import type { PlayerController } from '@base/player-three'
+import type { ChampionCollisionConfig } from '@/champions/ChampionConfig'
 import type {
   WallPlane,
   WallBox,
-  CollisionResult,
 } from '../collision'
 import {
   resolveCircleVsPlane,
   resolveCircleVsBox,
   computeSlideVelocity,
 } from '../collision'
-
-/** Minimum carry speed (m/s) below which collision resolve is skipped. */
-const CARRY_THRESHOLD = 0.5
-/** Player collision radius (metres). */
-const PLAYER_RADIUS = 0.4
-/** Slide friction — fraction of speed lost on wall contact. */
-const SLIDE_FRICTION = 0.12
-/** Head-on angle threshold (radians). Impacts within this angle from normal = full stop. */
-const HEAD_ON_ANGLE = Math.PI / 6 // 30°
 
 /**
  * Character entity for the Doomfist champion — correction layer over PlayerController.
@@ -33,11 +24,15 @@ const HEAD_ON_ANGLE = Math.PI / 6 // 30°
 export class DboxCharacterEntity {
   private walls: WallPlane[] = []
   private boxes: WallBox[] = []
+  private readonly headOnAngleRad: number
 
   constructor(
     private readonly getController: () => PlayerController,
     private readonly getCharacter: () => THREE.Object3D,
-  ) {}
+    private readonly cfg: ChampionCollisionConfig,
+  ) {
+    this.headOnAngleRad = (cfg.headOnAngleDeg * Math.PI) / 180
+  }
 
   /** Register arena collision geometry. */
   setCollisionGeometry(walls: WallPlane[], boxes: WallBox[]): void {
@@ -58,10 +53,8 @@ export class DboxCharacterEntity {
     const character = this.getCharacter()
     const carry = controller.getPlanarCarryVelocity()
 
-    // Only resolve when carry velocity is significant (abilities in flight).
-    // Normal walking collision is handled separately (simple position clamp).
     const carrySpeed = Math.hypot(carry.x, carry.z)
-    const hasCarry = carrySpeed > CARRY_THRESHOLD
+    const hasCarry = carrySpeed > this.cfg.carryThreshold
 
     const px = character.position.x
     const pz = character.position.z
@@ -71,9 +64,8 @@ export class DboxCharacterEntity {
     let slideNx = 0
     let slideNz = 0
 
-    // Check all wall planes
     for (const wall of this.walls) {
-      const hit = resolveCircleVsPlane(cx, cz, PLAYER_RADIUS, wall)
+      const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
       if (hit) {
         cx = hit.x
         cz = hit.z
@@ -83,9 +75,8 @@ export class DboxCharacterEntity {
       }
     }
 
-    // Check all wall boxes
     for (const box of this.boxes) {
-      const hit = resolveCircleVsBox(cx, cz, PLAYER_RADIUS, box)
+      const hit = resolveCircleVsBox(cx, cz, this.cfg.playerRadius, box)
       if (hit) {
         cx = hit.x
         cz = hit.z
@@ -97,20 +88,18 @@ export class DboxCharacterEntity {
 
     if (!corrected) return
 
-    // Apply position correction
     character.position.x = cx
     character.position.z = cz
     controller.syncPosition(cx, character.position.y, cz)
 
-    // Apply carry velocity slide (only meaningful during ability travel)
     if (hasCarry) {
       const slide = computeSlideVelocity(
         carry.x,
         carry.z,
         slideNx,
         slideNz,
-        SLIDE_FRICTION,
-        HEAD_ON_ANGLE,
+        this.cfg.slideFriction,
+        this.headOnAngleRad,
       )
       controller.setPlanarCarryVelocity(slide.vx, slide.vz)
     }
@@ -128,7 +117,7 @@ export class DboxCharacterEntity {
     let corrected = false
 
     for (const wall of this.walls) {
-      const hit = resolveCircleVsPlane(cx, cz, PLAYER_RADIUS, wall)
+      const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
       if (hit) {
         cx = hit.x
         cz = hit.z
@@ -137,7 +126,7 @@ export class DboxCharacterEntity {
     }
 
     for (const box of this.boxes) {
-      const hit = resolveCircleVsBox(cx, cz, PLAYER_RADIUS, box)
+      const hit = resolveCircleVsBox(cx, cz, this.cfg.playerRadius, box)
       if (hit) {
         cx = hit.x
         cz = hit.z

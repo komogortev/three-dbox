@@ -2,8 +2,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ThreeModule } from '@base/threejs-engine'
-import { DEFAULT_BINDINGS, InputModule, mergeBindings } from '@base/input'
+import { InputModule, mergeBindings } from '@base/input'
 import { useInputSettings } from '@/composables/useInputSettings'
+import { DBOX_DEFAULT_BINDINGS } from '@/config/dboxBindings'
 import { DboxSceneModule } from '@/modules/DboxSceneModule'
 import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
@@ -12,25 +13,30 @@ const router  = useRouter()
 const context = useShellContext()
 const container = ref<HTMLElement>()
 
-const { loadActive } = useInputSettings()
-const engine      = new ThreeModule()
-/** Default binds **KeyE** to `interact`; dbox uses **E** for slam, so drop keyboard interact here. */
-const inputModule = new InputModule(
-  mergeBindings(loadActive(), {
-    keyboard: {
-      interact: [],
-      ability_primary: ['KeyQ'],
-      ability_secondary: ['KeyE'],
-      toggle_camera: ['Tab'],
-    },
-    gamepad: {
-      ability_primary: [3],
-      ability_secondary: [2],
-      toggle_camera: [8],
-    },
-  } as unknown as Parameters<typeof mergeBindings>[1]),
-  { enablePointerLook: true },
-)
+const { loadOverrides } = useInputSettings()
+const engine         = new ThreeModule()
+const activeBindings = mergeBindings(DBOX_DEFAULT_BINDINGS, loadOverrides())
+const inputModule    = new InputModule(activeBindings, { enablePointerLook: true })
+
+const MOUSE_LABELS: Record<string, string> = {
+  Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB', Mouse3: 'M4', Mouse4: 'M5',
+}
+
+function formatKey(code: string): string {
+  if (code in MOUSE_LABELS) return MOUSE_LABELS[code]!
+  return code
+    .replace(/^Key/, '').replace(/^Digit/, '')
+    .replace('ShiftLeft', 'L-Shift').replace('ShiftRight', 'R-Shift')
+    .replace('ControlLeft', 'L-Ctrl').replace('ControlRight', 'R-Ctrl')
+    .replace('AltLeft', 'L-Alt').replace('AltRight', 'R-Alt')
+    .replace('Space', 'Space')
+}
+
+function fk(keys: string[]): string {
+  return keys.length ? keys.map(formatKey).join('/') : '—'
+}
+
+const kb = activeBindings.keyboard
 const sceneModule = new DboxSceneModule({
   descriptor: dboxScene,
   cameraPreset: 'close-follow',
@@ -236,11 +242,11 @@ onUnmounted(async () => {
     >
       <p class="text-white/55 text-[9px] font-mono uppercase tracking-widest mb-1.5">Key map</p>
       <dl class="space-y-1 text-[10px] font-mono leading-snug text-white/45">
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Move</dt><dd>W A S D · 5.5 m/s walk (OW1) · Shift sprint · Space jump · C crouch</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Punch</dt><dd>Right mouse on canvas hold → release (~1.4 s max · 4 s CD) · small upward pop (harness; OW kit is horizontal)</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Uppercut</dt><dd>Q · 6 s CD · NPCs in cone: lift + 0.6 s move/ability lock (OW1)</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Slam</dt><dd>E hold → cone at mouse→ground (else ≤20 m along aim) · release: dash to apex + slam · 6 s CD</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Camera</dt><dd>Tab — first / third person (click canvas for mouse-look in 1p)</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Move</dt><dd>W A S D · {{ fk(kb.sprint) }} sprint · {{ fk(kb.jump) }} jump · {{ fk(kb.crouch) }} crouch</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 1</dt><dd>{{ fk(kb.ability_tertiary) }} hold → release · ~1.4 s max · 4 s CD</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 2</dt><dd>{{ fk(kb.ability_primary) }} · 6 s CD · NPCs in cone: lift + 0.6 s lock</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 3</dt><dd>{{ fk(kb.ability_secondary) }} hold → cone at mouse→ground · release: dash + slam · 6 s CD</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Camera</dt><dd>{{ fk(kb.toggle_camera) }} — first / third person</dd></div>
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Time</dt><dd>P pause · F step 1 frame · R resume · [ ] slower / faster</dd></div>
       </dl>
     </div>
