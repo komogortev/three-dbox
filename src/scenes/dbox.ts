@@ -2,17 +2,15 @@ import type { SceneDescriptor } from '@base/scene-builder'
 import { sandboxScene } from './sandbox'
 
 /**
- * Doomfist-style dev mesh (Trinity export): single GLB with **Armature + SkinnedMesh** and
- * (ideally) embedded locomotion clips. Served from `public/models/dfist_base.glb`
- * (**meshopt** + **WebP** textures via `@gltf-transform/cli optimize`).
+ * Doomfist armored mesh (Trinity export, Draco + WebP via gltf-transform).
+ * Origin at feet, Armature root with proper skeleton — skinning works with
+ * SceneBuilder's modelFitHeight + alignFeet pipeline.
  *
- * {@link SceneBuilder.buildCharacter} clones with `SkeletonUtils.clone`, aligns feet to the
- * locomotion root, and runs clips through `retargetMixamoClipsToCharacter` (handles same-file
- * rigs and Mixamo-style hip roots). **Do not** pass sandbox Mixamo FBX URLs here — Trinity
- * bone names differ from Remy.
- *
- * If gloves/hair are separate weighted meshes that disappear with pruning, set
- * `pruneExtraSkinnedMeshes: false` below.
+ * IMPORTANT: Do NOT use `--compress meshopt` for skinned GLBs.
+ * `KHR_mesh_quantization` (i16_norm positions) breaks GPU skinning because
+ * position normalization to [-1,1] mismatches the inverse bind matrices.
+ * Use `--compress draco` instead — it compresses geometry without
+ * renormalizing vertex positions.
  */
 const DFIST_BASE_GLB = encodeURI('/models/dfist_base.glb')
 
@@ -29,13 +27,12 @@ export const dboxScene: SceneDescriptor = (() => {
   d.character = {
     startPosition: base?.startPosition ?? [0, 30],
     modelUrl: DFIST_BASE_GLB,
-    modelScale: base?.modelScale ?? 1,
-    modelFitHeight: base?.modelFitHeight ?? 1.78,
+    // OW1 Doomfist ≈ 7 ft (2.1 m). Raw GLB is ~1.0 m; modelFitHeight scales to match.
+    modelFitHeight: 2.1,
     pruneExtraSkinnedMeshes: true,
     rotationY: base?.rotationY ?? Math.PI / 2,
     terrainFootprintRadius: 0.22,
     // Harness-owned copy of the shared GLB locomotion pack.
-    // Copied from three-dreams/public — see player capability contracts note in roadmap.
     animationClipUrls: ['/characters/npc/animations_base.glb'],
     locomotionClipIndices: { idleStand: 4, walkFwdStand: 6, runFwdStand: 3 },
   }

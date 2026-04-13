@@ -46,7 +46,7 @@ Extracted dbox from `threejs-engine-dev` into standalone project.
 
 ## Phase 2: Character & Input Polish
 
-Champion config drives the character entity. Ability tuning described declaratively so the entity can compute optimally.
+Champion config drives the character entity. Ability tuning described declaratively so the entity can compute optimally. Physics params will be iterated based on playtesting — not all values are known upfront.
 
 - [ ] Define `ChampionConfig` type — ability params, collision tuning, speed, stamina
 - [ ] Move DboxLab ability constants into ChampionConfig (punch speed range, CDs, knockback values)
@@ -65,7 +65,7 @@ Champion config drives the character entity. Ability tuning described declarativ
 
 ## Phase 3: Arena Environment
 
-Phase 1 walls are sufficient for testing. This phase enriches the arena for varied play.
+Phase 1 walls are sufficient for Phase 2 tuning. This phase enriches the arena for varied play once character feel is locked.
 
 - [ ] Design arena layout: mix of walls, pillars, ramps, platforms at varied angles
 - [ ] Angled surfaces (ramps) for punch-redirect upward/sideways
