@@ -2,7 +2,8 @@
 
 ## Current phase
 
-**Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-13).
+**Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-13), **DEFERRED** pending Phase 3 physics foundation.
+**Phase 3: OW Map + Physics** — STARTED (2026-06-07). T-B13 `@base/physics` COMPLETE. T-B14 blocked (offline Blender session required).
 Phase 1: Wall Collision & Slide — COMPLETE (2026-04-12).
 
 ### Phase 2 progress (2026-04-13)
@@ -47,7 +48,7 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 
 ## Blockers
 
-None. Phase 2 close is next (health/damage + crosshair + hit-stop + remapping).
+**T-B14 OW map GLB** — offline Blender session required to acquire and export Château Guillard or Ecopoint: Antarctica. Blocks T-B15 (Rapier trimesh wiring) and therefore blocks Phase 2 close (health/damage numbers and hit-stop feel depend on real map geometry). T-B16 (arena select menu stub) can proceed without it.
 
 ## Roadmap restructure (2026-06-06)
 
@@ -75,6 +76,8 @@ New targets: T-B13 `@base/physics` package · T-B14 OW map GLB pipeline · T-B15
 | Date | Decision |
 |------|----------|
 | 2026-06-06 | **Roadmap restructured.** Phase 2B (ability completeness) inserted between Phase 2 and Phase 3. Phase 3 reframed: OW map GLB (Château Guillard from Open3DLab as Track 1; Ecopoint via OWLib as Track 2) + `@base/physics` Rapier wrapper package. Original Phase 3 hand-authored arena geometry replaced by real OW map with Rapier trimesh collision. |
+| 2026-06-07 | **T-B13 `@base/physics` SHIPPED.** `SHARED/packages/physics/` — `PhysicsWorld.create()` async factory (Rapier 0.14.0, module-level WASM init guard), `addStaticMesh(root: THREE.Object3D)` merges all Mesh children into a single fixed-body Rapier trimesh with world transforms applied, `spherePenetration(center, radius)` uses `world.projectPoint()` — exact drop-in contract for existing `CollisionResult` pattern in `DboxCharacterEntity`. Pure `tsc` build, WASM stays behind package boundary. |
+| 2026-06-07 | **Phase 2 close deferred until after Phase 3 physics lands.** Health/damage numbers, hit-stop duration, and ability wall-reaction feel will all be affected by how Rapier responds to the OW map's geometry. Shipping Phase 2 now would require a second tuning pass after physics integration — skip Phase 2 and go Phase 3 first to avoid rework. Phase 2 items remain queued; resume after T-B15 is wired and testable. |
 | 2026-06-06 | **`@base/physics` Rapier package architecture locked (planning only, no code).** Engine-agnostic public API (`PhysicsWorld`, `ColliderBuilder`, `ShapeCastResult`/`ColliderHandle` types). Rapier types hidden behind package boundary. Hybrid integration mode: Rapier owns collision geometry queries, `PlayerController` carry impulse system unchanged. `DboxCharacterEntity` gets optional `PhysicsWallCollider` param; falls back to existing plane/box math when absent. `PhysicsWorld.create()` async factory + `ColliderBuilder.fromGltfRoot()` + `overlapTest()` are the core query surface. |
 | 2026-06-06 | **OW map asset pipeline planned (planning only, no code).** Track 1 (fastest): Château Guillard from Open3DLab → Blender → GLB export (`--compress draco`, not meshopt) → `public/maps/`. Track 2 (canonical): Ecopoint: Antarctica via OWLib DataTool + io_scene_owm Blender addon → same GLB pipeline. Ecopoint preferred as it is Doomfist's canonical lore arena. Boundary walls remain as analytic `WallPlane[]`; interior GLB geometry handled by Rapier trimesh. |
 
