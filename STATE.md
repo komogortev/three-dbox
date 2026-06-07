@@ -47,14 +47,36 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 
 ## Blockers
 
-None. Phase 2 (Character & Input Polish) is next.
+None. Phase 2 close is next (health/damage + crosshair + hit-stop + remapping).
+
+## Roadmap restructure (2026-06-06)
+
+Original roadmap (Phases 0–5) updated — two new phases inserted after assessment:
+
+- **Phase 2 close** — 5 remaining items: health/damage system, crosshair, screen shake/hit-stop (T-B10), ability remapping in settings, uppercut ceiling clamp (Phase 1 deferred)
+- **Phase 2B (new)** — Ability completeness: Hand Cannon (T-B8), Passive: The Best Defense (T-B9), ability combos (T-B11), Meteor Strike (optional)
+- **Phase 3 reframed** — OW map GLB pipeline (Château Guillard / Ecopoint: Antarctica) + `@base/physics` Rapier package; replaces hand-authored arena geometry
+- **Phase 4** — Round flow (unchanged)
+- **Phase 5** — Polish + sound (T-B12) + PWA ship (unchanged)
+
+New targets: T-B13 `@base/physics` package · T-B14 OW map GLB pipeline · T-B15 Rapier trimesh collision in dbox · T-B16 Arena select menu · T-B17 Round structure · T-B18 Results screen
 
 ## Assets inventory
 
 | Asset | Path | Notes |
 |-------|------|-------|
 | Doomfist mesh | `public/models/dfist_base.glb` | Trinity rig, meshopt + WebP |
+| Doomfist alt | `public/models/dfist.glb` | Earlier export, untracked |
+| Doomfist armored | `public/models/dfist_armored.glb` | Armored skin, untracked |
 | Locomotion anims | `public/characters/npc/animations_base.glb` | Shared pack, indices: idleStand=4, walkFwdStand=6, runFwdStand=3 |
+
+## Decision log
+
+| Date | Decision |
+|------|----------|
+| 2026-06-06 | **Roadmap restructured.** Phase 2B (ability completeness) inserted between Phase 2 and Phase 3. Phase 3 reframed: OW map GLB (Château Guillard from Open3DLab as Track 1; Ecopoint via OWLib as Track 2) + `@base/physics` Rapier wrapper package. Original Phase 3 hand-authored arena geometry replaced by real OW map with Rapier trimesh collision. |
+| 2026-06-06 | **`@base/physics` Rapier package architecture locked (planning only, no code).** Engine-agnostic public API (`PhysicsWorld`, `ColliderBuilder`, `ShapeCastResult`/`ColliderHandle` types). Rapier types hidden behind package boundary. Hybrid integration mode: Rapier owns collision geometry queries, `PlayerController` carry impulse system unchanged. `DboxCharacterEntity` gets optional `PhysicsWallCollider` param; falls back to existing plane/box math when absent. `PhysicsWorld.create()` async factory + `ColliderBuilder.fromGltfRoot()` + `overlapTest()` are the core query surface. |
+| 2026-06-06 | **OW map asset pipeline planned (planning only, no code).** Track 1 (fastest): Château Guillard from Open3DLab → Blender → GLB export (`--compress draco`, not meshopt) → `public/maps/`. Track 2 (canonical): Ecopoint: Antarctica via OWLib DataTool + io_scene_owm Blender addon → same GLB pipeline. Ecopoint preferred as it is Doomfist's canonical lore arena. Boundary walls remain as analytic `WallPlane[]`; interior GLB geometry handled by Rapier trimesh. |
 
 ## Key constants (from DboxLab.ts)
 
