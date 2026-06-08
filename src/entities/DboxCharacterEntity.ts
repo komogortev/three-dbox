@@ -23,6 +23,11 @@ export class DboxCharacterEntity {
   private readonly headOnAngleRad: number
   private physicsWorld: PhysicsWorld | null = null
 
+  /** Minimum Rapier penetration depth for an XZ wall push to fire.
+   *  Contacts shallower than this are stair-riser grazes — skip them so the
+   *  terrain sampler can snap the player down on descent without fighting the push. */
+  private static readonly RAPIER_WALL_MIN_DEPTH = 0.05
+
   constructor(
     private readonly getController: () => PlayerController,
     private readonly getCharacter: () => THREE.Object3D,
@@ -108,7 +113,9 @@ export class DboxCharacterEntity {
           // Step/ramp — snap Y up instead of blocking XZ.
           cy += phit.depth * phit.normal.y
           corrected = true
-        } else {
+        } else if (phit.depth > DboxCharacterEntity.RAPIER_WALL_MIN_DEPTH) {
+          // Significant wall hit — skip shallow grazes (stair-riser depth < RAPIER_WALL_MIN_DEPTH)
+          // so the terrain sampler handles stair descent without fighting the XZ push.
           cx += phit.normal.x * phit.depth
           cz += phit.normal.z * phit.depth
           slideNx = phit.normal.x
@@ -182,9 +189,11 @@ export class DboxCharacterEntity {
 
       if (phit) {
         if (phit.normal.y > 0.3) {
-          cy += phit.depth * phit.normal.y
+          // Full depth lift (not depth * normalY) for guaranteed step clearance.
+          // depth * normalY undershot on steps with shallow normals (e.g. 0.35 → 35% lift).
+          cy += phit.depth
           corrected = true
-        } else {
+        } else if (phit.depth > DboxCharacterEntity.RAPIER_WALL_MIN_DEPTH) {
           cx += phit.normal.x * phit.depth
           cz += phit.normal.z * phit.depth
           corrected = true
