@@ -23,6 +23,9 @@ importers:
       '@base/input':
         specifier: link:../SHARED/packages/input
         version: link:../SHARED/packages/input
+      '@base/physics':
+        specifier: link:../SHARED/packages/physics
+        version: link:../SHARED/packages/physics
       '@base/player-three':
         specifier: link:../SHARED/packages/player-three
         version: link:../SHARED/packages/player-three
