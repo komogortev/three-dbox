@@ -6,8 +6,10 @@ import { PhysicsWorld } from '@base/physics'
 import { PLAYER_CAPSULE_HALF_HEIGHT } from '@base/player-three'
 import { CALIBRATION_POOL_BOUNDS } from '@/calibration/calibrationLayout'
 import { SandboxSceneModule } from './SandboxSceneModule'
-import { DboxLab } from './dbox/DboxLab'
+import { DoomfistLab } from './dbox/DboxLab'
 import type { GameplayLabHost } from './dbox/GameplayLabHost'
+import type { IAbilityLab } from './dbox/IAbilityLab'
+import type { MapDescriptor } from '@/maps/MapDescriptor'
 import type { ThirdPersonSceneConfig } from './GameplaySceneModule'
 import { DboxCharacterEntity } from '@/entities/DboxCharacterEntity'
 import { DBOX_ARENA_WALLS, DBOX_ARENA_BOXES, buildArenaWallMeshes } from '@/collision'
@@ -22,8 +24,8 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
   descriptor?: SceneDescriptor
   /** Override champion config. Defaults to {@link DOOMFIST_CONFIG}. */
   champion?: ChampionConfig
-  /** URL to an OW map GLB in public/maps/. Replaces interior hand-authored geometry when present. */
-  mapGlbUrl?: string
+  /** OW map descriptor — replaces hand-authored arena geometry when present. */
+  map?: MapDescriptor
 }
 
 /**
@@ -33,28 +35,28 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
  * Orchestrator only — delegates ability logic to DboxLab, collision to the entity.
  */
 export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHost {
-  private readonly lab: DboxLab
+  private readonly lab: IAbilityLab
   private readonly champion: ChampionConfig
-  private readonly mapGlbUrl: string | undefined
+  private readonly map: MapDescriptor | undefined
   private entity: DboxCharacterEntity | null = null
   private arenaMeshes: THREE.Object3D[] = []
   private physicsWorld: PhysicsWorld | null = null
   private mapRoot: THREE.Object3D | null = null
 
   constructor(options: DboxSceneModuleOptions = {}) {
-    const { champion = DOOMFIST_CONFIG, mapGlbUrl, ...rest } = options
+    const { champion = DOOMFIST_CONFIG, map, ...rest } = options
     super({
       ...rest,
       characterSpeed: rest.characterSpeed ?? champion.movement.walkSpeed,
       carryImpulseDecayPerSecond: rest.carryImpulseDecayPerSecond ?? champion.movement.carryImpulseDecayPerSecond,
     })
     this.champion = champion
-    this.mapGlbUrl = mapGlbUrl
-    this.lab = new DboxLab(this, champion)
+    this.map = map
+    this.lab = new DoomfistLab(this, champion)
   }
 
   /** In OW map mode, skip the calibration grid/platforms/pool/sampler. */
-  protected override useSandboxScene(): boolean { return !this.mapGlbUrl }
+  protected override useSandboxScene(): boolean { return !this.map }
 
   getCarryImpulseDecayPerSecond(): number {
     return this.cfg.carryImpulseDecayPerSecond ?? this.champion.movement.carryImpulseDecayPerSecond
@@ -81,18 +83,13 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     const ctx = context as ThreeContext
 
     // ── OW map GLB ────────────────────────────────────────────────────────
-    if (this.mapGlbUrl) {
+    if (this.map) {
       try {
-        const gltf = await ctx.assets.loadGLTF(resolvePublicUrl(this.mapGlbUrl))
+        const gltf = await ctx.assets.loadGLTF(resolvePublicUrl(this.map.glbUrl))
         this.mapRoot = gltf.scene
         ctx.scene.add(this.mapRoot)
         this.physicsWorld = await PhysicsWorld.create()
-        // Exclude smd_bone_vis rig-visualization helpers (OWLib exports) — small cylinders
-        // scattered throughout the scene that would trap the player if included in the trimesh.
-        this.physicsWorld.addStaticMesh(
-          this.mapRoot,
-          mesh => !/^smd_bone_vis/i.test(mesh.name),
-        )
+        this.physicsWorld.addStaticMesh(this.mapRoot, this.map.physicsFilter)
       } catch (err) {
         console.warn('[DboxSceneModule] Map GLB load failed — using hand-authored arena:', err)
       }
@@ -108,35 +105,21 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
     // ── Map-mode terrain sampler + spawn grounding ────────────────────────
     if (mapLoaded) {
-      // Build filtered mesh list — exclude rig-vis helpers and OWLib technical volumes.
-      // The following material type prefixes produce non-architectural rendering (effect volumes,
-      // spawn zones, zone indicators, water layers) and are hidden while kept for ground sampling:
-      //   13A_ = emissive blobs (no texture + full white emissive → warm orange tone-mapped)
-      //   9F_  = spawn-room protection volumes (pink/magenta textured volume)
-      //   9C_  = KOTH zone indicator / objective overlay
-      //   9A_  = effect glow/reflection supplementary layer
-      //   B2_  = water / liquid volume
-      //   10F_ = particle-effect type
-      //   F0_  = decal / overlay effect marker
-      //
-      // OWLib material names in the exported GLB are formatted as `TypeCode_Hash`, e.g.
-      // `13A_81B09AB0F566B1D2` — the type code appears at the START of the name (no colon prefix).
-      // The word boundary `\b` matches start-of-string and after any non-word char (dot, colon,
-      // space) without matching a code embedded inside a longer hex hash like `AB13A_`.
-      const OWLIB_TECHNICAL_MAT = /\b(13A|9F|9C|9A|B2|10F|F0)_/
+      const desc = this.map!
       const terrainMeshes: THREE.Mesh[] = []
       let hiddenTechCount = 0
       this.mapRoot!.traverse(child => {
         const mesh = child as THREE.Mesh
         if (!mesh.isMesh) return
-        if (/^smd_bone_vis/i.test(mesh.name)) return
+        // Apply physics filter — same meshes excluded from Rapier are excluded from terrain.
+        if (desc.physicsFilter && !desc.physicsFilter(mesh)) return
         const geo = mesh.geometry
         const triCount = geo.index ? geo.index.count / 3 : (geo.attributes.position?.count ?? 0) / 3
         const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
         const matName = (mat as any)?.name ?? ''
-        // Hide tiny data-node quads (spawn markers, triggers ≤8 tris) and OWLib
-        // technical volume meshes (emissive effect/spawn/decal material types).
-        const isTechMat = OWLIB_TECHNICAL_MAT.test(matName)
+        // Hide ≤8-tri data-node quads (spawn markers / triggers) and OWLib technical
+        // material volumes — kept in terrain for floor-Y sampling, just not rendered.
+        const isTechMat = desc.owlibTechMat ? desc.owlibTechMat.test(matName) : false
         if (triCount <= 8 || isTechMat) {
           mesh.visible = false
           if (isTechMat) hiddenTechCount++
@@ -145,32 +128,16 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       })
       console.debug(`[DboxSceneModule] OWLib mesh filter: ${hiddenTechCount} technical-material meshes hidden`)
 
-      // ── Terrain sampler ──────────────────────────────────────────────────
-      // ── Probe strategy: max(characterY + 1.0, 1.0) ──────────────────────
-      // A purely fixed probe (probeFromY=1.0) worked for the ground floor but missed any
-      // surface above Y=1.0. A purely character-relative probe (player.y − offset) breaks
-      // the self-correction guarantee: if the player ends up BELOW the floor the probe also
-      // goes below it, misses it, and the player stays stuck.
-      //
-      // max(characterY + 1.0, 1.0) gives both:
-      //   • +1.0 above character → probe always starts above character centre; elevated floors
-      //     are found because the probe tracks the player up when abilities carry them high.
-      //   • Hard floor at Y=1.0 → the probe NEVER goes below 1.0. At spawn time character.y≈0
-      //     so probe=1.0 exactly (identical to the confirmed working baseline). When the player
-      //     somehow goes below the floor the probe clamps to 1.0, finds −0.97 from above, and
-      //     self-corrects within one tick.
-      //   • Rooftop (Y≈81.5): only reachable when character.y > 80.5 — far outside normal range.
-      //   • Ceilings: Three.js FrontSide raycast only hits up-facing faces; ceiling geometry
-      //     (front face pointing DOWN) is missed regardless of probe height.
+      // Probe strategy: max(characterY + 1.0, 1.0) — tracks player elevation for
+      // multi-level geometry while clamping to 1.0 for spawn self-correction.
       const character = this.getCharacter()
       const controller = this.getPlayerController()
       this.setSampler(new MeshTerrainSampler(terrainMeshes, null, () => Math.max(character.position.y + 1.0, 1.0)))
 
-      const samplerHitX = 30, samplerHitZ = -15  // east-wing interior (confirmed)
-      const floorY   = this.sampleTerrainSurfaceY(samplerHitX, samplerHitZ)
-      const spawnY   = floorY + PLAYER_CAPSULE_HALF_HEIGHT
-      character.position.set(samplerHitX, spawnY, samplerHitZ)
-      controller.syncPosition(samplerHitX, spawnY, samplerHitZ)
+      const floorY = this.sampleTerrainSurfaceY(desc.spawnX, desc.spawnZ)
+      const spawnY = floorY + PLAYER_CAPSULE_HALF_HEIGHT
+      character.position.set(desc.spawnX, spawnY, desc.spawnZ)
+      controller.syncPosition(desc.spawnX, spawnY, desc.spawnZ)
     }
 
     // ── Character entity (collision correction layer) ────────────────────

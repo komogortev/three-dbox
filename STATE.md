@@ -3,7 +3,7 @@
 ## Current phase
 
 **Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-13), **DEFERRED** pending Phase 3 physics foundation.
-**Phase 3: OW Map + Physics** — IN PROGRESS (2026-06-07). T-B13 ✅ T-B14 ✅ T-B15 ✅ T-B16 ✅. **OW map POC COMPLETE (2026-06-08)** — floor sampler + mesh filter stable; wall penetration + stair snag + spawn calibration deferred. **T-B17 round structure next** (after wall/stair polish pass).
+**Phase 3: OW Map + Physics** — IN PROGRESS (2026-06-07). T-B13 ✅ T-B14 ✅ T-B15 ✅ T-B16 ✅. OW map POC COMPLETE (2026-06-08). **Tier 1 fixes SHIPPED (2026-06-08)** — Fix 1 dual-sphere wall penetration ✅ Fix 2 normalY step-climb ✅ Fix 3 MapDescriptor + spawn ✅ IAbilityLab/DoomfistLab ✅. **T-B17 round structure next.**
 Phase 1: Wall Collision & Slide — COMPLETE (2026-04-12).
 
 ### Phase 2 progress (2026-04-13)
@@ -46,9 +46,8 @@ Forked from `threejs-engine-dev` dbox locomotion lab into standalone project.
 ## Known issues
 
 - Character scale fixed: `modelFitHeight` set to 2.1 m (OW1 Doomfist ~7 ft), was inheriting sandbox Remy 1.78 m
-- **Wall collision gap** — Rapier `spherePenetration` resolves walls but character can still walk through thin walls into tech/exterior area. Needs capsule sweep or tighter sphere radius tuning next session.
-- **Stair navigation gets stuck** — step height detection is too strict; character snags on stair geometry instead of stepping up cleanly. Needs `terrainYOffset` / step-climb tolerance tuned.
-- **Spawn point calibration deferred** — coordinates `(30, −15)` are heal-powerup spawn locations, not player start. Character spawn calibration is a dedicated follow-up task.
+- **Spawn coords need visual calibration** — `(30, −15)` confirmed interior + walkable (floor Y ≈ −0.97) but is a heal-powerup corner (walls N+E). Update `CHATEAU_GUILLARD.spawnX/Z` in `src/maps/chateauGuillard.ts` after visual testing.
+- NPC blobs collide with walls (bounce) but have no health/damage system
 - NPC blobs collide with walls (bounce) but have no health/damage system
 - Meteor Strike not implemented
 - Arena has 80×80m boundary walls, 3 angled interior walls, 2 pillars
@@ -84,6 +83,7 @@ New targets: T-B13 `@base/physics` package · T-B14 OW map GLB pipeline · T-B15
 
 | Date | Decision |
 |------|----------|
+| 2026-06-08 | **Tier 1 fixes SHIPPED.** Fix 1: dual-sphere Rapier probe in `DboxCharacterEntity` — feet (`y + radius`) + head (`y + 2×halfHeight − radius`) spheres; picks deeper hit from either probe, catches thin exterior walls single-centre sphere missed. Fix 2: normalY step-climb — if hit `normal.y > 0.3` (ramp/stair edge), snap `cy += depth × normal.y` instead of blocking XZ; carry slide guard added (`slideNx/Nz !== 0` required). Fix 3: `MapDescriptor` interface + `src/maps/chateauGuillard.ts` — spawn coords, `physicsFilter`, `owlibTechMat` centralised per-map; `DboxSceneModule.onMount` reads all config from descriptor. Architecture: `IAbilityLab` interface extracted; `DboxLab` class renamed `DoomfistLab implements IAbilityLab`; module now holds `IAbilityLab` ref for future multi-champion support. Build: `vue-tsc --noEmit` + `vite build` both clean. |
 | 2026-06-06 | **Roadmap restructured.** Phase 2B (ability completeness) inserted between Phase 2 and Phase 3. Phase 3 reframed: OW map GLB (Château Guillard from Open3DLab as Track 1; Ecopoint via OWLib as Track 2) + `@base/physics` Rapier wrapper package. Original Phase 3 hand-authored arena geometry replaced by real OW map with Rapier trimesh collision. |
 | 2026-06-07 | **T-B14 + T-B15 + T-B16 SHIPPED.** Château Guillard GLB acquired (Open3DLab, 136MB → 8.8MB draco+webp). `DboxSceneModule` loads map, adds Rapier trimesh (smd_bone_vis filter), uses flat Y=0 terrain sampler (OW map floor ≈ Y=0), `spherePenetration` handles walls. `DboxCharacterEntity` had missing `import * as THREE` (silent ReferenceError crash) — fixed. Arena select menu: `MenuView` Château Guillard (violet) + Sandbox (cyan), `DboxView` reads `?arena=` query param. |
 | 2026-06-07 | **T-B16 cleanup pass.** Scene in OW map mode now fully sanitized: `useSandboxScene()` hook skips sandbox geometry; `spawnBlobs: !mapLoaded` opt skips NPC blobs; analytic arena wall planes/meshes replaced with empty arrays; fixture legend panel hidden via `!arenaId`. Terrain sampler upgraded from flat Y=0 to `MeshTerrainSampler` (Three.js CPU raycast from Y=5 → hits Château Guillard ground floor at Y≈−0.56, skipping rooftops at Y≈81+). All 3 abilities confirmed working in map mode (Rising Uppercut: 11.05m arc). |

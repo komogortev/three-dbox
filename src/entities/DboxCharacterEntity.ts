@@ -61,6 +61,7 @@ export class DboxCharacterEntity {
     const px = character.position.x
     const pz = character.position.z
     let cx = px
+    let cy = character.position.y
     let cz = pz
     let corrected = false
     let slideNx = 0
@@ -88,27 +89,43 @@ export class DboxCharacterEntity {
       }
     }
 
-    // Rapier trimesh — map interior geometry (walls, ramps, obstacles).
-    // Ignore floor hits (|normalY| >= 0.7) — terrain sampler owns ground contact.
+    // Rapier trimesh — dual-sphere probe (feet + head) catches thin exterior walls
+    // that a single centre-sphere misses. Ignore floor hits (|normalY| >= 0.7).
     if (this.physicsWorld) {
-      const center = new THREE.Vector3(cx, character.position.y + PLAYER_CAPSULE_HALF_HEIGHT, cz)
-      const phit = this.physicsWorld.spherePenetration(center, this.cfg.playerRadius)
-      if (phit && Math.abs(phit.normal.y) < 0.7) {
-        cx += phit.normal.x * phit.depth
-        cz += phit.normal.z * phit.depth
-        slideNx = phit.normal.x
-        slideNz = phit.normal.z
-        corrected = true
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
+
+      const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)
+      const hitHead = this.physicsWorld.spherePenetration(headCenter, this.cfg.playerRadius)
+
+      // Pick the deeper penetration from either probe.
+      let phit = null as typeof hitFeet
+      if (hitFeet && Math.abs(hitFeet.normal.y) < 0.7) phit = hitFeet
+      if (hitHead && Math.abs(hitHead.normal.y) < 0.7 && (!phit || hitHead.depth > phit.depth)) phit = hitHead
+
+      if (phit) {
+        if (phit.normal.y > 0.3) {
+          // Step/ramp — snap Y up instead of blocking XZ.
+          cy += phit.depth * phit.normal.y
+          corrected = true
+        } else {
+          cx += phit.normal.x * phit.depth
+          cz += phit.normal.z * phit.depth
+          slideNx = phit.normal.x
+          slideNz = phit.normal.z
+          corrected = true
+        }
       }
     }
 
     if (!corrected) return
 
     character.position.x = cx
+    character.position.y = cy
     character.position.z = cz
-    controller.syncPosition(cx, character.position.y, cz)
+    controller.syncPosition(cx, cy, cz)
 
-    if (hasCarry) {
+    if (hasCarry && (slideNx !== 0 || slideNz !== 0)) {
       const slide = computeSlideVelocity(
         carry.x,
         carry.z,
@@ -129,6 +146,7 @@ export class DboxCharacterEntity {
     const character = this.getCharacter()
     const controller = this.getController()
     let cx = character.position.x
+    let cy = character.position.y
     let cz = character.position.z
     let corrected = false
 
@@ -150,21 +168,35 @@ export class DboxCharacterEntity {
       }
     }
 
-    // Rapier trimesh — walking collision against map interior geometry.
+    // Rapier trimesh — dual-sphere (feet + head) + step-climb for walking collision.
     if (this.physicsWorld) {
-      const center = new THREE.Vector3(cx, character.position.y + PLAYER_CAPSULE_HALF_HEIGHT, cz)
-      const phit = this.physicsWorld.spherePenetration(center, this.cfg.playerRadius)
-      if (phit && Math.abs(phit.normal.y) < 0.7) {
-        cx += phit.normal.x * phit.depth
-        cz += phit.normal.z * phit.depth
-        corrected = true
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
+
+      const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)
+      const hitHead = this.physicsWorld.spherePenetration(headCenter, this.cfg.playerRadius)
+
+      let phit = null as typeof hitFeet
+      if (hitFeet && Math.abs(hitFeet.normal.y) < 0.7) phit = hitFeet
+      if (hitHead && Math.abs(hitHead.normal.y) < 0.7 && (!phit || hitHead.depth > phit.depth)) phit = hitHead
+
+      if (phit) {
+        if (phit.normal.y > 0.3) {
+          cy += phit.depth * phit.normal.y
+          corrected = true
+        } else {
+          cx += phit.normal.x * phit.depth
+          cz += phit.normal.z * phit.depth
+          corrected = true
+        }
       }
     }
 
     if (corrected) {
       character.position.x = cx
+      character.position.y = cy
       character.position.z = cz
-      controller.syncPosition(cx, character.position.y, cz)
+      controller.syncPosition(cx, cy, cz)
     }
   }
 }
