@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ThreeModule } from '@base/threejs-engine'
 import { InputModule, mergeBindings } from '@base/input'
 import { useInputSettings } from '@/composables/useInputSettings'
 import { DBOX_DEFAULT_BINDINGS } from '@/config/dboxBindings'
 import { DboxSceneModule } from '@/modules/DboxSceneModule'
+import { chateauGuilardArena } from '@/scenes/arenas/chateau-guillard'
 import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
 import DboxHud from '@/hud/DboxHud.vue'
 import type { HudSnapshot } from '@/hud/types'
 
 const router  = useRouter()
+const route   = useRoute()
 const context = useShellContext()
 const container = ref<HTMLElement>()
 
@@ -19,6 +21,8 @@ const { loadOverrides } = useInputSettings()
 const engine         = new ThreeModule()
 const activeBindings = mergeBindings(DBOX_DEFAULT_BINDINGS, loadOverrides())
 const inputModule    = new InputModule(activeBindings, { enablePointerLook: true })
+
+const arenaId = route.query.arena as string | undefined
 
 const MOUSE_LABELS: Record<string, string> = {
   Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB', Mouse3: 'M4', Mouse4: 'M5',
@@ -39,8 +43,15 @@ function fk(keys: string[]): string {
 }
 
 const kb = activeBindings.keyboard
+
+function buildArenaOptions() {
+  if (arenaId === 'chateau-guillard') return chateauGuilardArena.options
+  // Default: sandbox (no OW map)
+  return { descriptor: dboxScene }
+}
+
 const sceneModule = new DboxSceneModule({
-  descriptor: dboxScene,
+  ...buildArenaOptions(),
   cameraPreset: 'close-follow',
   // Doomfist is 2.1 m — eye level at ~88% height (OW1 first-person feel).
   firstPersonEyeOffsetY: 1.85,
@@ -297,9 +308,9 @@ onUnmounted(async () => {
     <!-- HUD overlay (health + abilities) -->
     <DboxHud v-if="worldReady" :snapshot="hudSnapshot" />
 
-    <!-- Fixture legend (bottom-left) — same layout as sandbox -->
+    <!-- Fixture legend (bottom-left) — sandbox only; hidden when an OW map is loaded -->
     <div
-      v-if="worldReady"
+      v-if="worldReady && !arenaId"
       class="absolute bottom-4 left-4 z-40 flex flex-col gap-0.5 bg-black/50 border border-white/10 rounded-lg px-3 py-2 backdrop-blur-sm max-w-[min(100vw-2rem,22rem)]"
     >
       <p class="text-white/40 text-[9px] font-mono uppercase tracking-widest mb-0.5">dbox · locomotion lab</p>

@@ -1,14 +1,10 @@
+import * as THREE from 'three'
 import type { PlayerController } from '@base/player-three'
+import { PLAYER_CAPSULE_HALF_HEIGHT } from '@base/player-three'
 import type { ChampionCollisionConfig } from '@/champions/ChampionConfig'
-import type {
-  WallPlane,
-  WallBox,
-} from '../collision'
-import {
-  resolveCircleVsPlane,
-  resolveCircleVsBox,
-  computeSlideVelocity,
-} from '../collision'
+import type { WallPlane, WallBox } from '../collision'
+import { resolveCircleVsPlane, resolveCircleVsBox, computeSlideVelocity } from '../collision'
+import type { PhysicsWorld } from '@base/physics'
 
 /**
  * Character entity for the Doomfist champion — correction layer over PlayerController.
@@ -25,6 +21,7 @@ export class DboxCharacterEntity {
   private walls: WallPlane[] = []
   private boxes: WallBox[] = []
   private readonly headOnAngleRad: number
+  private physicsWorld: PhysicsWorld | null = null
 
   constructor(
     private readonly getController: () => PlayerController,
@@ -38,6 +35,11 @@ export class DboxCharacterEntity {
   setCollisionGeometry(walls: WallPlane[], boxes: WallBox[]): void {
     this.walls = walls
     this.boxes = boxes
+  }
+
+  /** Wire in Rapier physics for map-interior trimesh collision. */
+  setPhysicsWorld(world: PhysicsWorld): void {
+    this.physicsWorld = world
   }
 
   /** Expose walls for blob NPC collision in DboxLab. */
@@ -86,6 +88,20 @@ export class DboxCharacterEntity {
       }
     }
 
+    // Rapier trimesh — map interior geometry (walls, ramps, obstacles).
+    // Ignore floor hits (|normalY| >= 0.7) — terrain sampler owns ground contact.
+    if (this.physicsWorld) {
+      const center = new THREE.Vector3(cx, character.position.y + PLAYER_CAPSULE_HALF_HEIGHT, cz)
+      const phit = this.physicsWorld.spherePenetration(center, this.cfg.playerRadius)
+      if (phit && Math.abs(phit.normal.y) < 0.7) {
+        cx += phit.normal.x * phit.depth
+        cz += phit.normal.z * phit.depth
+        slideNx = phit.normal.x
+        slideNz = phit.normal.z
+        corrected = true
+      }
+    }
+
     if (!corrected) return
 
     character.position.x = cx
@@ -130,6 +146,17 @@ export class DboxCharacterEntity {
       if (hit) {
         cx = hit.x
         cz = hit.z
+        corrected = true
+      }
+    }
+
+    // Rapier trimesh — walking collision against map interior geometry.
+    if (this.physicsWorld) {
+      const center = new THREE.Vector3(cx, character.position.y + PLAYER_CAPSULE_HALF_HEIGHT, cz)
+      const phit = this.physicsWorld.spherePenetration(center, this.cfg.playerRadius)
+      if (phit && Math.abs(phit.normal.y) < 0.7) {
+        cx += phit.normal.x * phit.depth
+        cz += phit.normal.z * phit.depth
         corrected = true
       }
     }

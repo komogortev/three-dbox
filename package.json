@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@base/audio": "link:../SHARED/packages/audio",
+    "@base/physics": "link:../SHARED/packages/physics",
     "@base/camera-three": "link:../SHARED/packages/camera-three",
     "@base/engine-core": "link:../SHARED/packages/engine-core",
     "@base/gameplay": "link:../SHARED/packages/gameplay",

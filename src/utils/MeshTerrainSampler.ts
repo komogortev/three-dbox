@@ -24,14 +24,28 @@ export class MeshTerrainSampler implements TerrainSurfaceSampler {
   private readonly meshes: THREE.Mesh[]
   private readonly fallback: TerrainSurfaceSampler | null
 
+  private readonly probeFromY: number | (() => number)
+
   /**
-   * @param meshes   Pre-collected mesh objects from the collision GLB.
-   * @param fallback Optional secondary sampler used when the ray misses (returns 0).
-   *                 A procedural TerrainSampler works well here for steep slope coverage.
+   * @param meshes      Pre-collected mesh objects from the collision GLB.
+   * @param fallback    Optional secondary sampler used when the ray misses (returns 0).
+   * @param probeFromY  World Y to cast the ray from. Default 500 (catches all geometry).
+   *                    - Pass a number for a fixed probe origin.
+   *                    - Pass a callback `() => number` for a dynamic (e.g. character-relative)
+   *                      probe origin, evaluated fresh each `sample()` call. This is the correct
+   *                      approach for multi-level geometry: probe from just above the character's
+   *                      current position so the sampler always finds the floor they are on, not
+   *                      a floor on a different level. The callback should return a Y that is:
+   *                        • BELOW any ceiling the character could be standing under (so double-sided
+   *                          ceiling faces are not detected as floor)
+   *                        • ABOVE the floor surface the character is standing on
+   *                      A typical value: `() => character.position.y - 0.5` (50 cm below capsule
+   *                      centre, i.e. ~35 cm above the feet).
    */
-  constructor(meshes: THREE.Mesh[], fallback: TerrainSurfaceSampler | null = null) {
+  constructor(meshes: THREE.Mesh[], fallback: TerrainSurfaceSampler | null = null, probeFromY: number | (() => number) = 500) {
     this.meshes = meshes
     this.fallback = fallback
+    this.probeFromY = probeFromY
     this.raycaster = new THREE.Raycaster(this.origin, MeshTerrainSampler.DOWN)
   }
 
@@ -51,11 +65,12 @@ export class MeshTerrainSampler implements TerrainSurfaceSampler {
   }
 
   /**
-   * Returns world Y at (x, z) by casting a ray downward from Y=500.
+   * Returns world Y at (x, z) by casting a ray downward from probeFromY.
    * Falls back to the secondary sampler on a miss (steep slopes, off-mesh positions).
    */
   sample(x: number, z: number): number {
-    this.origin.set(x, 500, z)
+    const probeY = typeof this.probeFromY === 'function' ? this.probeFromY() : this.probeFromY
+    this.origin.set(x, probeY, z)
     const hits = this.raycaster.intersectObjects(this.meshes, false)
     if (hits.length > 0) return hits[0].point.y
     return this.fallback ? this.fallback.sample(x, z) : 0

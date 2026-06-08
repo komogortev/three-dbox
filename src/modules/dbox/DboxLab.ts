@@ -77,10 +77,10 @@ export class DboxLab {
     private readonly cfg: ChampionConfig,
   ) {}
 
-  mount(container: HTMLElement, eventBus: EventBus, ctx: ThreeContext): void {
+  mount(container: HTMLElement, eventBus: EventBus, ctx: ThreeContext, opts?: { spawnBlobs?: boolean }): void {
     this.slamHostCtx = ctx
     this.pointerRoot = container
-    this.spawnPoolBlobs(ctx.scene)
+    if (opts?.spawnBlobs !== false) this.spawnPoolBlobs(ctx.scene)
 
     const onPointerMove = (e: PointerEvent): void => {
       const el = this.pointerRoot
@@ -273,6 +273,7 @@ export class DboxLab {
   private raycastTerrainAlongMouse(O: THREE.Vector3, D: THREE.Vector3): SlamApex | null {
     if (D.y > -0.03) return null
     let startedAbove = false
+    console.log("raycast", this)
     for (let t = 0.12; t < SLAM_RAY_T_MAX; t += SLAM_RAY_T_STEP) {
       this._rayP.copy(O).addScaledVector(D, t)
       const gy = this.host.sampleTerrainSurfaceY(this._rayP.x, this._rayP.z)
