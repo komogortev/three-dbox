@@ -42,6 +42,7 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   private arenaMeshes: THREE.Object3D[] = []
   private physicsWorld: PhysicsWorld | null = null
   private mapRoot: THREE.Object3D | null = null
+  private debugMarkerMeshes: THREE.Mesh[] = []
 
   constructor(options: DboxSceneModuleOptions = {}) {
     const { champion = DOOMFIST_CONFIG, map, ...rest } = options
@@ -134,10 +135,21 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       const controller = this.getPlayerController()
       this.setSampler(new MeshTerrainSampler(terrainMeshes, null, () => Math.max(character.position.y + 1.0, 1.0)))
 
-      const floorY = this.sampleTerrainSurfaceY(desc.spawnX, desc.spawnZ)
+      // Pick spawn: random from spawnPoints list if provided, fallback to spawnX/Z.
+      let spawnX = desc.spawnX
+      let spawnZ = desc.spawnZ
+      if (desc.spawnPoints && desc.spawnPoints.length > 0) {
+        const pt = desc.spawnPoints[Math.floor(Math.random() * desc.spawnPoints.length)]
+        spawnX = pt[0]
+        spawnZ = pt[1]
+      }
+      const floorY = this.sampleTerrainSurfaceY(spawnX, spawnZ)
       const spawnY = floorY + PLAYER_CAPSULE_HALF_HEIGHT
-      character.position.set(desc.spawnX, spawnY, desc.spawnZ)
-      controller.syncPosition(desc.spawnX, spawnY, desc.spawnZ)
+      character.position.set(spawnX, spawnY, spawnZ)
+      controller.syncPosition(spawnX, spawnY, spawnZ)
+
+      // Dev: render green spheres at every ≤8-tri OWLib marker mesh.
+      if (desc.debugMarkers) this.renderDebugMarkers(ctx.scene, this.mapRoot!)
     }
 
     // ── Character entity (collision correction layer) ────────────────────
@@ -161,6 +173,8 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.lab.unmount()
     for (const m of this.arenaMeshes) m.parent?.remove(m)
     this.arenaMeshes = []
+    for (const m of this.debugMarkerMeshes) m.parent?.remove(m)
+    this.debugMarkerMeshes = []
     if (this.mapRoot) {
       this.mapRoot.parent?.remove(this.mapRoot)
       this.mapRoot = null
@@ -169,6 +183,34 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.physicsWorld = null
     this.entity = null
     await super.onUnmount()
+  }
+
+  /**
+   * Dev tool: place a bright sphere at every mesh node with ≤8 triangles.
+   * These are OWLib entity marker quads — health packs, spawn volumes, triggers.
+   * Uses Three.js getWorldPosition so parent rotations are handled correctly.
+   * Logs "(marker) MeshName  x  y  z" to console.debug for coordinate capture.
+   */
+  private renderDebugMarkers(scene: THREE.Scene, root: THREE.Object3D): void {
+    const geo = new THREE.SphereGeometry(0.3, 6, 6)
+    const mat = new THREE.MeshBasicMaterial({ color: 0x00ff66 })
+    root.traverse(child => {
+      const mesh = child as THREE.Mesh
+      if (!mesh.isMesh) return
+      const g = mesh.geometry
+      const tris = g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3
+      if (tris === 0 || tris > 8) return
+      const pos = new THREE.Vector3()
+      mesh.getWorldPosition(pos)
+      const marker = new THREE.Mesh(geo, mat)
+      marker.position.copy(pos)
+      scene.add(marker)
+      this.debugMarkerMeshes.push(marker)
+      console.debug(
+        `[marker] ${mesh.name.padEnd(40)} x=${pos.x.toFixed(1).padStart(6)}  y=${pos.y.toFixed(1).padStart(6)}  z=${pos.z.toFixed(1).padStart(6)}`,
+      )
+    })
+    console.debug(`[marker] total: ${this.debugMarkerMeshes.length} marker spheres rendered`)
   }
 
   protected override onBeforeGameplayTick(_simDelta: number, _ctx: ThreeContext): void {

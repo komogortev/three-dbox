@@ -8,10 +8,15 @@ import type * as THREE from 'three'
 export interface MapDescriptor {
   /** Path to the GLB file under /public, e.g. '/maps/chateau-guillard.glb'. */
   glbUrl: string
-  /** Player spawn X coordinate (floor Y is sampled at load-time). */
+  /** Fallback spawn X coordinate when spawnPoints is absent or empty. */
   spawnX: number
-  /** Player spawn Z coordinate. */
+  /** Fallback spawn Z coordinate. */
   spawnZ: number
+  /**
+   * Candidate spawn positions [x, z].  When provided, a random entry is used
+   * each mount instead of spawnX/spawnZ.  Floor Y is still sampled at runtime.
+   */
+  spawnPoints?: [number, number][]
   /**
    * Return false to exclude a Mesh from Rapier trimesh and terrain sampler.
    * Defaults to including all meshes when omitted.
@@ -23,4 +28,10 @@ export interface MapDescriptor {
    * (≤8-tri spawn/trigger quads need floor-Y sampling).
    */
   owlibTechMat?: RegExp
+  /**
+   * Dev flag: render a visible green sphere at every ≤8-triangle mesh node and
+   * log its world position to console.debug.  Helps identify OWLib entity markers
+   * (health packs, spawn volumes, triggers) for spawn point calibration.
+   */
+  debugMarkers?: boolean
 }
