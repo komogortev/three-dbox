@@ -6,7 +6,7 @@ import { InputModule, mergeBindings } from '@base/input'
 import { useInputSettings } from '@/composables/useInputSettings'
 import { DBOX_DEFAULT_BINDINGS } from '@/config/dboxBindings'
 import { DboxSceneModule } from '@/modules/DboxSceneModule'
-import { chateauGuilardArena } from '@/scenes/arenas/chateau-guillard'
+import { ARENA_REGISTRY } from '@/arenas/registry'
 import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
 import DboxHud from '@/hud/DboxHud.vue'
@@ -44,14 +44,10 @@ function fk(keys: string[]): string {
 
 const kb = activeBindings.keyboard
 
-function buildArenaOptions() {
-  if (arenaId === 'chateau-guillard') return chateauGuilardArena.options
-  // Default: sandbox (no OW map)
-  return { descriptor: dboxScene }
-}
+const arenaOptions = ARENA_REGISTRY.find(a => a.id === arenaId)?.options ?? { descriptor: dboxScene }
 
 const sceneModule = new DboxSceneModule({
-  ...buildArenaOptions(),
+  ...arenaOptions,
   cameraPreset: 'close-follow',
   // Doomfist is 2.1 m — eye level at ~88% height (OW1 first-person feel).
   firstPersonEyeOffsetY: 1.85,

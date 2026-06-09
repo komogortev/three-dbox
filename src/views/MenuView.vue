@@ -1,22 +1,9 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { ARENA_REGISTRY } from '@/arenas/registry'
 
 const router = useRouter()
-
-const arenas = [
-  {
-    id: 'chateau-guillard',
-    label: 'Château Guillard',
-    sub: 'OW1 map · Rapier physics',
-    accent: 'bg-violet-900 hover:bg-violet-800 active:bg-violet-950 text-violet-100',
-  },
-  {
-    id: 'sandbox',
-    label: 'Sandbox',
-    sub: 'Calibration arena',
-    accent: 'bg-cyan-900 hover:bg-cyan-800 active:bg-cyan-950 text-cyan-100',
-  },
-]
+const arenas = ARENA_REGISTRY
 </script>
 
 <template>
@@ -34,7 +21,7 @@ const arenas = [
         :key="a.id"
         class="w-full px-6 py-3 rounded-xl transition-colors text-left"
         :class="a.accent"
-        @click="router.push(a.id === 'sandbox' ? '/dbox' : `/dbox?arena=${a.id}`)"
+        @click="router.push(a.route)"
       >
         <div class="text-sm font-semibold leading-none">{{ a.label }}</div>
         <div class="text-[10px] opacity-60 mt-0.5 font-mono">{{ a.sub }}</div>
