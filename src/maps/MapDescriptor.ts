@@ -36,6 +36,49 @@ export interface MapDescriptor {
   debugMarkers?: boolean
 }
 
+// ── Blender scene documentation ───────────────────────────────────────────────
+
+export interface BlenderCollection {
+  /** Collection name as it appears in Blender's Scene Collection panel. */
+  name: string
+  /**
+   * Role of this collection in the map:
+   * - playable: walkable architecture — included in physics + terrain sampler
+   * - background: out-of-bounds scenery — excluded from physics
+   * - lighting: lights and probes — not exported as meshes
+   * - effects: visual FX volumes (fog, water) — excluded from physics
+   * - entities: OW game object nodes (health packs, spawn volumes) — keep in terrain
+   * - unknown: needs investigation
+   */
+  role: 'playable' | 'background' | 'lighting' | 'effects' | 'entities' | 'unknown'
+  /** Total Blender objects in collection (direct children). */
+  objects: number
+  /** OWLib armature (model) instance count (subset of objects). */
+  skeletonInstances?: number
+  /**
+   * Unique OWLib model IDs whose instances appear in this collection.
+   * Format: bare hex string, e.g. '000000002695'.
+   * Same model ID can appear in multiple collections.
+   */
+  modelIds?: string[]
+  /**
+   * Mesh hash strings exclusive to this collection (appear in Submesh_N.HASH.NNN names).
+   * Used to build physics exclude patterns without re-exporting the GLB.
+   */
+  exclusiveMeshHashes?: string[]
+  notes?: string
+  children?: BlenderCollection[]
+}
+
+export interface BlenderScene {
+  /**
+   * Blender collection hierarchy extracted via headless Blender + Python script.
+   * Collection names do NOT survive GLB export as nodes — this is documentation only.
+   * Use exclusiveMeshHashes to derive runtime physicsFilter patterns.
+   */
+  collections: BlenderCollection[]
+}
+
 // ── Data form (human-authored, JSON-serializable, OW-vocabulary) ──────────────
 
 export interface SpawnPoint {
@@ -53,7 +96,7 @@ export interface SpawnPoint {
  * Convert to the runtime form via {@link compileMapDescriptor}.
  *
  * Adding a new OW map:
- *   1. Create src/maps/<name>.ts  ← define MapDescriptorData + export compileMapDescriptor(data)
+ *   1. Create src/maps/<name>.ts  — define MapDescriptorData + call compileMapDescriptor()
  *   2. Add one entry to src/arenas/registry.ts
  */
 export interface MapDescriptorData {
@@ -72,11 +115,12 @@ export interface MapDescriptorData {
   spawnFallback: { x: number; z: number }
   physics: {
     /**
-     * Regex pattern (case-insensitive) for mesh names to exclude from Rapier
-     * trimesh and the terrain sampler.  Typically targets OWLib rig visualisers
-     * (smd_bone_vis) that would otherwise trap the player capsule.
+     * Regex patterns (case-insensitive) tested against mesh.name.
+     * Any match → mesh excluded from Rapier trimesh and terrain sampler.
+     * Mountain hashes can be expressed as '\\.HASH\\.' since they appear in
+     * the Submesh_N.HASH.NNN naming convention.
      */
-    excludeNamePattern?: string
+    excludeNamePatterns?: string[]
   }
   owlib: {
     /**
@@ -96,6 +140,11 @@ export interface MapDescriptorData {
     entityTypes?: Record<string, string>
   }
   /**
+   * Blender scene hierarchy, extracted via headless Blender script.
+   * Purely documentation — collection names do not survive GLB export.
+   */
+  blenderScene?: BlenderScene
+  /**
    * Dev flag: render green spheres at every ≤8-tri mesh node and log world
    * positions to console.debug.  Helps calibrate spawn points in-game.
    */
@@ -107,12 +156,16 @@ export interface MapDescriptorData {
 /**
  * Compiles a human-authored {@link MapDescriptorData} into the runtime
  * {@link MapDescriptor} consumed by DboxSceneModule.
- * Pre-compiles regex patterns so physicsFilter is not recreated per-mesh.
+ * Pre-compiles all regex patterns so they are not recreated per-mesh.
  */
 export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
-  const physicsRe = data.physics.excludeNamePattern
-    ? new RegExp(data.physics.excludeNamePattern, 'i')
-    : null
+  const patterns = (data.physics.excludeNamePatterns ?? [])
+    .map(p => new RegExp(p, 'i'))
+
+  const physicsFilter = patterns.length > 0
+    ? (mesh: THREE.Mesh) => !patterns.some(re => re.test(mesh.name))
+    : undefined
+
   const techMatRe = data.owlib.hiddenTypeCodes.length > 0
     ? new RegExp(`\\b(${data.owlib.hiddenTypeCodes.join('|')})_`)
     : undefined
@@ -122,7 +175,7 @@ export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
     spawnX: data.spawnFallback.x,
     spawnZ: data.spawnFallback.z,
     spawnPoints: data.spawnPoints.map(p => [p.x, p.z]),
-    physicsFilter: physicsRe ? mesh => !physicsRe.test(mesh.name) : undefined,
+    physicsFilter,
     owlibTechMat: techMatRe,
     debugMarkers: data.debugMarkers,
   }

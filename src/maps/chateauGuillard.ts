@@ -10,56 +10,72 @@ import { compileMapDescriptor, type MapDescriptorData } from './MapDescriptor'
  *
  * GLB inventory (extracted from JSON chunk):
  *   374 meshes · 168 materials · 5 186 nodes
+ *   447 _Skeleton roots (OWLib model instances) · 26 unique model IDs
  *   Material format: "Château Guillard:<TypeCode>_<MeshHash>"
  *
- * Spawn points are extracted from ≤8-tri OWLib entity marker quads.
- * Enable debugMarkers to render green spheres at all markers in-game;
- * console.debug logs exact world XYZ for calibration.
+ * Blender collection hierarchy extracted via headless Blender 5.0 script.
+ * Collection names do NOT survive GLB export — used as documentation only.
+ * Mountain/fog exclusions are expressed as mesh-name hash patterns instead.
  */
 const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
   id: 'chateau-guillard',
   name: 'Château Guillard',
   glbUrl: '/maps/chateau-guillard.glb',
 
-  // Candidate health-pack / entity-marker spawn positions.
-  // Labels match OWLib debug output (enable debugMarkers to re-calibrate).
+  // Spawn points extracted from ≤8-tri OWLib entity marker quads.
+  // Zone labels derived from Blender collection membership.
+  // Enable debugMarkers to re-calibrate with green spheres in-game.
   spawnPoints: [
-    { label: 'ground-pickup-cluster', x:   9.4, z:   1.0 },
-    { label: 'upper-corridor-a',      x:  12.8, z: -12.3 },
-    { label: 'upper-corridor-b',      x:  23.6, z: -12.1 },
-    { label: 'elevated-pickup',       x: -30.0, z:   2.0 },
-    { label: 'ground-single',         x:  19.6, z: -12.6 },
+    { label: 'yard-ground-pickup-cluster',    x:   9.4, z:   1.0 },
+    { label: 'mainhall-upper-corridor-a',     x:  12.8, z: -12.3 },
+    { label: 'mainhall-upper-corridor-b',     x:  23.6, z: -12.1 },
+    { label: 'otherparts-elevated-pickup',    x: -30.0, z:   2.0 },
+    { label: 'otherparts-ground-single',      x:  19.6, z: -12.6 },
   ],
-  // Fallback: east-wing interior, confirmed walkable.
+  // Fallback: east-wing interior (OtherParts zone), confirmed walkable.
   spawnFallback: { x: 30, z: -15 },
 
   physics: {
-    // smd_bone_vis — OWLib rig-visualisation helpers: small cylinders that trap
-    // the player capsule if included in the Rapier trimesh.
-    excludeNamePattern: '^smd_bone_vis',
+    // Patterns tested against mesh.name (case-insensitive). Any match = excluded
+    // from Rapier trimesh and terrain sampler.
+    //
+    // Mesh naming convention: Submesh_<N>.<HASH>.<instance>
+    // Hashes exclusive to non-playable collections are safe to match via '\.HASH\.'.
+    excludeNamePatterns: [
+      // OWLib rig-visualisation helpers — small bone cylinders that trap the capsule.
+      '^smd_bone_vis',
+
+      // MapOutsideMountains (201 meshes) + clouds (35 meshes subset) — background terrain
+      // visible through the windows. Hashes confirmed exclusive to this collection
+      // via headless Blender extraction. Excluding saves ~236 Rapier trimesh colliders
+      // and prevents incorrect floor-Y reads at map edges.
+      '\\.(?:1597A365FD2BE281|1C9078CD362A142D|2478AD61C6FC6F90|3D8859984468C18F|778596F2709115B2|B2E0C8C014365A04)\\.',
+
+      // LightingSetup/extrafogs — 6 plain Blender cube meshes used as fog volumes.
+      '^Cube(?:\\.\\d+)?$',
+    ],
   },
 
   owlib: {
-    // Non-architectural material type-code prefixes (hex).
-    // These tag trigger volumes, effect zones, sound zones, and lighting volumes.
-    // Meshes are hidden visually but kept in the terrain sampler for floor-Y grounding.
+    // Material type-code prefixes (hex). Format: "Château Guillard:<TypeCode>_<MeshHash>"
+    // These tag non-architectural volumes hidden visually but kept in the terrain sampler.
     //
-    // Full type-code inventory (from GLB JSON chunk, 168 materials):
-    //   0x00  96 mats — architectural default (always visible)
-    //   0x01–0x03, 0x0B, 0x74–0xCC  — architectural variants (always visible)
-    //   0x9A  2 mats — effect zone           ← hidden
-    //   0x9C  1 mat  — effect zone variant   ← hidden
-    //   0x9F  1 mat  — effect zone variant   ← hidden
-    //   0xB2  1 mat  — sound/audio zone      ← hidden
-    //   0xF0  1 mat  — ambient / sky volume  ← hidden
-    //   0x10F 1 mat  — lighting volume       ← hidden
-    //   0x13A 1 mat  — trigger / spawn quad  ← hidden
+    // Full type-code inventory from GLB JSON chunk (168 materials total):
+    //   0x00  96 mats — architectural default              (always visible)
+    //   0x01–0x03, 0x0B  — architectural variants          (always visible)
+    //   0x74–0xCC range  — architectural surface types     (always visible)
+    //   0x9A  2 mats — effect zone                        ← hidden
+    //   0x9C  1 mat  — effect zone variant                ← hidden
+    //   0x9F  1 mat  — effect zone variant                ← hidden
+    //   0xB2  1 mat  — sound / audio zone                 ← hidden
+    //   0xF0  1 mat  — ambient / sky volume               ← hidden
+    //   0x10F 1 mat  — lighting volume                    ← hidden
+    //   0x13A 1 mat  — trigger / spawn quad               ← hidden
     hiddenTypeCodes: ['9A', '9C', '9F', 'B2', 'F0', '10F', '13A'],
 
-    // OWLib entity ID annotations (from GLB node names: "Entity <HexId>.<N>").
-    // High-count IDs are architectural prop types; low-count IDs are game objects.
+    // OWLib entity ID annotations (node names: "Entity <HexId>.<instance>").
     entityTypes: {
-      // ── Architectural / static prop types ─────────────────────────────────
+      // ── Architectural / static prop types (high instance count) ───────────
       '1211': 'static-prop-primary (×140 — main architectural element)',
       '161A': 'static-prop-variant-a (×107)',
       '161E': 'static-prop-variant-b (×65)',
@@ -84,31 +100,120 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       '25F1': 'static-prop-unique-g (×2)',
       // ── Game object / interactive entity types ────────────────────────────
       '0345': 'spawn-volume (×2 — player start locations, one per team)',
-      '0ED2': 'entity-marker (×2 — upper-corridor region, used as spawn calibration)',
+      '0ED2': 'entity-marker (×2 — upper-corridor, used as spawn calibration points)',
       '011B': 'entity-unknown (×1)',
       '033E': 'entity-unknown (×1)',
       '036B': 'entity-unknown (×1)',
       '04A8': 'entity-unknown (×1)',
       '0CB6': 'entity-unknown (×1)',
-      '122C': 'entity-unknown (×1)',
-      '13D9': 'entity-unknown (×1)',
-      '145C': 'entity-unknown (×1)',
-      '146F': 'entity-unknown (×1)',
-      '1470': 'entity-unknown (×1)',
-      '1489': 'entity-unknown (×1)',
-      '148A': 'entity-unknown (×1)',
-      '149F': 'entity-unknown (×1)',
-      '14D8': 'entity-unknown (×1)',
-      '14D9': 'entity-unknown (×1)',
-      '155B': 'entity-unknown (×1)',
-      '17E4': 'entity-unknown (×1)',
-      '1B89': 'entity-unknown (×1)',
-      '1F1C': 'entity-unknown (×1)',
-      '25F0': 'entity-unknown (×1)',
     },
   },
 
-  // Set true to render green spheres at all ≤8-tri marker nodes and log positions.
+  // ── Blender scene documentation ─────────────────────────────────────────────
+  // Extracted via: blender --background <file.blend> --python extract_collections.py
+  // Blender 5.0 · file: FullOWMap_Chateau_Guillard_Eevee_packed_MeltRib_V2.blend
+  // Collection names do NOT appear as GLB nodes — this is authoring reference only.
+  blenderScene: {
+    collections: [
+      {
+        name: 'FullMapThings', role: 'unknown', objects: 0,
+        notes: 'Root grouping — no direct objects, contains all subcollections',
+        children: [
+          {
+            name: 'MainParts', role: 'unknown', objects: 0,
+            notes: 'Grouping for the three playable zones',
+            children: [
+              {
+                name: 'MainHall', role: 'playable', objects: 616,
+                skeletonInstances: 69,
+                modelIds: ['000000000619','000000000EF8','000000001CED','0000000025CA',
+                           '000000002D37','0000000031C9','0000000031CA','0000000031CC',
+                           '00000000326E','000000003324','0000000034BF','000000003791',
+                           '000000003792','0000000037A8','000000003B7C','00000000501D'],
+                notes: '457 MESH + 89 EMPTY + 1 SPEAKER. Interior hall, upper corridors.',
+              },
+              {
+                name: 'Yard', role: 'playable', objects: 846,
+                skeletonInstances: 126,
+                modelIds: ['000000000619','000000000EF8','000000001CED','0000000025CA',
+                           '000000002695','0000000026C4','0000000026CC','0000000027B9',
+                           '000000002D37','0000000031CC','0000000034BF','000000003791',
+                           '000000003792','0000000037A8','00000000501D','000000005022'],
+                notes: '531 MESH + 185 EMPTY + 4 SPEAKER. Outdoor courtyard — primary combat area.',
+              },
+              {
+                name: 'OtherParts', role: 'playable', objects: 2124,
+                skeletonInstances: 377,
+                modelIds: ['0000000007F8','0000000025CA','000000002695','0000000026C4',
+                           '0000000026CC','0000000027B9','000000002C9C','000000002D37',
+                           '0000000031C4','0000000031C9','0000000031CC','000000003791',
+                           '000000003792','0000000037A8','000000003DF2','00000000501D',
+                           '000000005022'],
+                notes: '1260 MESH + 482 EMPTY + 5 SPEAKER. Surrounding structures, bridges, elevated sections.',
+              },
+              {
+                name: 'wateredgewaves', role: 'effects', objects: 119,
+                notes: '119 MESH. Water-edge animated planes (material: wavesedge). ' +
+                       'Kept in physics — water planes act as floor at map boundary. ' +
+                       'Hash 81B09AB0F566B1D2 shared with castle walls; cannot distinguish by name.',
+              },
+            ],
+          },
+          {
+            name: 'MapOutsideMountains', role: 'background', objects: 201,
+            exclusiveMeshHashes: [
+              '1597A365FD2BE281', '1C9078CD362A142D', '2478AD61C6FC6F90',
+              '3D8859984468C18F', '778596F2709115B2', 'B2E0C8C014365A04',
+            ],
+            notes: '201 plain MESH (no skeletons). Background terrain visible through windows. ' +
+                   'Excluded from physics via exclusiveMeshHashes name patterns.',
+            children: [
+              {
+                name: 'clouds', role: 'background', objects: 35,
+                notes: '35 MESH. Uses shared hash 81B09AB0F566B1D2 (instances .441–.450+). ' +
+                       'Cannot distinguish from castle walls by name alone; left in physics.',
+              },
+            ],
+          },
+          {
+            name: 'LightingSetup', role: 'lighting', objects: 4,
+            notes: '2 LIGHT + 1 MESH + 1 LIGHT_PROBE. Lights not exported as GLB meshes.',
+            children: [
+              {
+                name: 'extralights', role: 'lighting', objects: 46,
+                notes: '45 LIGHT + 1 EMPTY. Not in GLB mesh hierarchy.',
+              },
+              {
+                name: 'extrafogs', role: 'effects', objects: 6,
+                notes: '6 plain Blender cubes (named Cube, Cube.001–005, material: Material.002). ' +
+                       'Excluded from physics via name pattern ^Cube(\\.\\d+)?$.',
+              },
+            ],
+          },
+          {
+            name: 'ExtraStuff', role: 'unknown', objects: 27,
+            notes: '27 MESH at root. Unknown role — left in physics.',
+            children: [
+              {
+                name: 'MainParents', role: 'entities', objects: 5649,
+                skeletonInstances: 1,
+                modelIds: ['00000000111E'],
+                notes: '5476 EMPTY + 172 MESH + 1 skeleton. ' +
+                       'EMPTYs are Entity XXXXXXXX OW game-object nodes (health packs, spawns, triggers). ' +
+                       '172 MESHes are ≤8-tri marker quads — hidden visually, kept in terrain sampler.',
+              },
+              {
+                name: 'MoreStuff', role: 'unknown', objects: 503,
+                notes: '503 MESH. Hashes overlap with playable zones (014F64135F209FC7 primary). ' +
+                       'Cannot safely exclude — left in physics.',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
   debugMarkers: false,
 }
 
