@@ -49,10 +49,15 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       // visible through the windows. Hashes confirmed exclusive to this collection
       // via headless Blender extraction. Excluding saves ~236 Rapier trimesh colliders
       // and prevents incorrect floor-Y reads at map edges.
-      '\\.(?:1597A365FD2BE281|1C9078CD362A142D|2478AD61C6FC6F90|3D8859984468C18F|778596F2709115B2|B2E0C8C014365A04)\\.',
+      //
+      // NOTE: Three.js PropertyBinding.sanitizeNodeName() strips dots from node names,
+      // so Blender's "Submesh_0.HASH.443" becomes "Submesh_0HASH443" in Three.js.
+      // Pattern must match the hash as a bare substring — no dot anchors.
+      '(?:1597A365FD2BE281|1C9078CD362A142D|2478AD61C6FC6F90|3D8859984468C18F|778596F2709115B2|B2E0C8C014365A04)',
 
-      // LightingSetup/extrafogs — 6 plain Blender cube meshes used as fog volumes.
-      '^Cube(?:\\.\\d+)?$',
+      // LightingSetup/extrafogs — 6 plain Blender cubes.
+      // Blender names: Cube, Cube.001–005 → sanitized: Cube, Cube001–005.
+      '^Cube\\d*$',
     ],
   },
 
@@ -107,6 +112,28 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       '04A8': 'entity-unknown (×1)',
       '0CB6': 'entity-unknown (×1)',
     },
+  },
+
+  // ── Display overrides ────────────────────────────────────────────────────────
+  // Applied after terrain sampler setup — runs on ALL meshes including those
+  // excluded from Rapier, so background zones can be hidden here.
+  display: {
+    meshOverrides: [
+      {
+        // MapOutsideMountains (201 meshes) — background terrain seen through windows.
+        // Hidden entirely: shows skybox instead of stone cliffs, reduces draw calls.
+        // Hashes confirmed exclusive to this collection via Blender extraction.
+        // Three.js sanitizes dots out of node names — match hash as bare substring.
+        namePattern: '(?:1597A365FD2BE281|1C9078CD362A142D|2478AD61C6FC6F90|3D8859984468C18F|778596F2709115B2|B2E0C8C014365A04)',
+        opacity: 0.0,
+      },
+      {
+        // LightingSetup/extrafogs — 6 plain Blender cubes (Cube, Cube.001–005).
+        // Three.js sanitizes "Cube.001" → "Cube001"; pattern uses \d* not \.\d+.
+        namePattern: '^Cube\\d*$',
+        opacity: 0.0,
+      },
+    ],
   },
 
   // ── Blender scene documentation ─────────────────────────────────────────────
@@ -186,7 +213,7 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
               {
                 name: 'extrafogs', role: 'effects', objects: 6,
                 notes: '6 plain Blender cubes (named Cube, Cube.001–005, material: Material.002). ' +
-                       'Excluded from physics via name pattern ^Cube(\\.\\d+)?$.',
+                       'Excluded from physics via name pattern ^Cube\\d*$ (Three.js strips dots: Cube.001 → Cube001).',
               },
             ],
           },

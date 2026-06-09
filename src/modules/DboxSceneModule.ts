@@ -148,6 +148,34 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       character.position.set(spawnX, spawnY, spawnZ)
       controller.syncPosition(spawnX, spawnY, spawnZ)
 
+      // ── Display overrides (opacity / visibility per zone) ─────────────────
+      // Second pass — runs on ALL meshes including physics-excluded ones, so
+      // background geometry hidden from Rapier can also be hidden visually.
+      if (desc.meshDisplayOverrides?.length) {
+        let overrideCount = 0
+        this.mapRoot!.traverse(child => {
+          const mesh = child as THREE.Mesh
+          if (!mesh.isMesh) return
+          for (const override of desc.meshDisplayOverrides!) {
+            if (!override.pattern.test(mesh.name)) continue
+            if (override.opacity <= 0) {
+              mesh.visible = false
+            } else {
+              const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+              for (const m of mats) {
+                const mat = m as THREE.MeshStandardMaterial
+                mat.transparent = override.opacity < 1
+                mat.opacity = override.opacity
+                mat.needsUpdate = true
+              }
+            }
+            overrideCount++
+            break
+          }
+        })
+        console.debug(`[DboxSceneModule] display overrides: ${overrideCount} meshes affected`)
+      }
+
       // Dev: render green spheres at every ≤8-tri OWLib marker mesh.
       if (desc.debugMarkers) this.renderDebugMarkers(ctx.scene, this.mapRoot!)
     }

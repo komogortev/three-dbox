@@ -2,6 +2,17 @@ import type * as THREE from 'three'
 
 // ── Runtime form (consumed by DboxSceneModule) ────────────────────────────────
 
+export interface MeshDisplayOverride {
+  /** Pre-compiled regex tested against mesh.name. */
+  pattern: RegExp
+  /**
+   * 0 = mesh.visible = false (no draw call, still in terrain sampler).
+   * 0 < x < 1 = material.transparent = true + material.opacity = x.
+   * 1 = fully opaque (no change from GLB default).
+   */
+  opacity: number
+}
+
 /**
  * Per-map runtime configuration for DboxSceneModule.
  * Prefer authoring via {@link MapDescriptorData} + {@link compileMapDescriptor}.
@@ -28,6 +39,13 @@ export interface MapDescriptor {
    * Matching meshes are hidden visually at load but kept in the terrain sampler.
    */
   owlibTechMat?: RegExp
+  /**
+   * Per-zone visual overrides applied in a separate pass after terrain sampler
+   * setup.  Runs on ALL meshes regardless of physicsFilter, so background zones
+   * excluded from Rapier can still be made transparent/invisible here.
+   * First matching override wins; unmatched meshes are unchanged.
+   */
+  meshDisplayOverrides?: MeshDisplayOverride[]
   /**
    * Dev flag: render a visible green sphere at every ≤8-triangle mesh node and
    * log its world position to console.debug.  Helps identify OWLib entity markers
@@ -117,8 +135,13 @@ export interface MapDescriptorData {
     /**
      * Regex patterns (case-insensitive) tested against mesh.name.
      * Any match → mesh excluded from Rapier trimesh and terrain sampler.
-     * Mountain hashes can be expressed as '\\.HASH\\.' since they appear in
-     * the Submesh_N.HASH.NNN naming convention.
+     *
+     * IMPORTANT — Three.js node-name sanitization: Three.js GLTFLoader calls
+     * `PropertyBinding.sanitizeNodeName()` on every GLTF node name, which strips
+     * dots (and other special chars).  Blender's "Submesh_0.HASH.443" arrives in
+     * the scene as "Submesh_0HASH443".  Match hashes as bare substrings:
+     *   correct:   'HASH'          (substring match)
+     *   incorrect: '\\.HASH\\.'   (dots are gone)
      */
     excludeNamePatterns?: string[]
   }
@@ -138,6 +161,32 @@ export interface MapDescriptorData {
      * Used as documentation; not consumed at runtime.
      */
     entityTypes?: Record<string, string>
+  }
+  /**
+   * Per-zone visual overrides applied after terrain sampler setup.
+   * Runs on ALL meshes (including physics-excluded background geometry).
+   * First matching override wins; unmatched meshes keep GLB defaults.
+   *
+   * Use cases:
+   *   - Hide fog/lighting volumes that exported as visible geometry
+   *   - Make background terrain invisible (shows skybox instead of cliffs)
+   *   - Semi-transparent zones for development / zone debugging
+   */
+  display?: {
+    meshOverrides?: Array<{
+      /**
+       * Regex pattern tested against mesh.name (case-insensitive).
+       * Note: Three.js sanitizes GLTF node names — dots are stripped.
+       * Match hash substrings directly, not with dot anchors.
+       */
+      namePattern: string
+      /**
+       * 0 = mesh.visible = false (cheapest — no draw call).
+       * 0 < x < 1 = semi-transparent (sets material.transparent + opacity).
+       * 1 = restore full opacity (useful to override a parent pattern).
+       */
+      opacity: number
+    }>
   }
   /**
    * Blender scene hierarchy, extracted via headless Blender script.
@@ -170,6 +219,9 @@ export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
     ? new RegExp(`\\b(${data.owlib.hiddenTypeCodes.join('|')})_`)
     : undefined
 
+  const meshDisplayOverrides: MeshDisplayOverride[] = (data.display?.meshOverrides ?? [])
+    .map(o => ({ pattern: new RegExp(o.namePattern, 'i'), opacity: o.opacity }))
+
   return {
     glbUrl: data.glbUrl,
     spawnX: data.spawnFallback.x,
@@ -177,6 +229,7 @@ export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
     spawnPoints: data.spawnPoints.map(p => [p.x, p.z]),
     physicsFilter,
     owlibTechMat: techMatRe,
+    meshDisplayOverrides: meshDisplayOverrides.length ? meshDisplayOverrides : undefined,
     debugMarkers: data.debugMarkers,
   }
 }
