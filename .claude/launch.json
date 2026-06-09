@@ -1,12 +1,12 @@
-﻿{
+{
   "version": "0.0.1",
   "configurations": [
     {
       "name": "three-dbox",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev", "--port", "5183", "--strictPort"],
-      "port": 5183,
-      "cwd": "E:\\\\Projects\\\\three-dbox"
+      "runtimeArgs": ["dev", "--port", "5185", "--strictPort"],
+      "port": 5185,
+      "cwd": "E:\\Projects\\three-dbox"
     }
   ]
 }

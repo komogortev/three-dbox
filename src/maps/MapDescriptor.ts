@@ -46,6 +46,8 @@ export interface MapDescriptor {
    * First matching override wins; unmatched meshes are unchanged.
    */
   meshDisplayOverrides?: MeshDisplayOverride[]
+  /** Health pack locations and per-spawn rotation layout. */
+  healthPacks?: HealthPackConfig
   /**
    * Dev flag: render a visible green sphere at every ≤8-triangle mesh node and
    * log its world position to console.debug.  Helps identify OWLib entity markers
@@ -95,6 +97,41 @@ export interface BlenderScene {
    * Use exclusiveMeshHashes to derive runtime physicsFilter patterns.
    */
   collections: BlenderCollection[]
+}
+
+// ── Health pack substructure ──────────────────────────────────────────────────
+
+/**
+ * Defines one class of health pack locations on this map.
+ * `entityType` is the 4-char OWLib hex entity type ID (e.g. '37C2').
+ * The extractor scans the loaded GLB for all entity nodes of this type and
+ * yields one ExtractedSlot per instance found.
+ */
+export interface HealthPackSlotDef {
+  /** Logical zone label used in rotation sets, e.g. 'corridor', 'otherparts-west'. */
+  group: string
+  /** OWLib entity type ID — 4 hex chars, case-insensitive. */
+  entityType: string
+  size: 'small' | 'large'
+}
+
+/**
+ * Health pack configuration for one map.
+ * `slots` drives GLB extraction; `rotations` controls per-spawn layout cycling.
+ */
+export interface HealthPackConfig {
+  /**
+   * One entry per distinct OWLib entity type that represents a health pack.
+   * The extractor instantiates one slot per matching entity node found in the GLB.
+   */
+  slots: HealthPackSlotDef[]
+  /**
+   * Per-spawn rotation layouts.  Each entry is the set of group names active on
+   * that spawn.  DboxSceneModule advances the index on each onMount() call so
+   * each visit to the map uses a different subset.
+   * If absent → all slots are active every spawn.
+   */
+  rotations?: string[][]
 }
 
 // ── Data form (human-authored, JSON-serializable, OW-vocabulary) ──────────────
@@ -193,6 +230,8 @@ export interface MapDescriptorData {
    * Purely documentation — collection names do not survive GLB export.
    */
   blenderScene?: BlenderScene
+  /** Health pack locations and per-spawn rotation layout. */
+  healthPacks?: HealthPackConfig
   /**
    * Dev flag: render green spheres at every ≤8-tri mesh node and log world
    * positions to console.debug.  Helps calibrate spawn points in-game.
@@ -230,6 +269,7 @@ export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
     physicsFilter,
     owlibTechMat: techMatRe,
     meshDisplayOverrides: meshDisplayOverrides.length ? meshDisplayOverrides : undefined,
+    healthPacks: data.healthPacks,
     debugMarkers: data.debugMarkers,
   }
 }

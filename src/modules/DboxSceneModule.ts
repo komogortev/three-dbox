@@ -18,6 +18,8 @@ import { DOOMFIST_CONFIG } from '@/champions/doomfist'
 import type { HudSnapshot } from '@/hud/types'
 import { resolvePublicUrl } from '@/utils/resolvePublicUrl'
 import { MeshTerrainSampler } from '@/utils/MeshTerrainSampler'
+import { extractHealthPackSlots } from '@/items/HealthPackExtractor'
+import { HealthPackManager } from '@/items/HealthPackManager'
 
 
 export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
@@ -43,6 +45,9 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   private physicsWorld: PhysicsWorld | null = null
   private mapRoot: THREE.Object3D | null = null
   private debugMarkerMeshes: THREE.Mesh[] = []
+  private healthPackManager: HealthPackManager | null = null
+  /** Incremented each onMount() — drives health pack rotation index. */
+  private spawnCount = 0
 
   constructor(options: DboxSceneModuleOptions = {}) {
     const { champion = DOOMFIST_CONFIG, map, ...rest } = options
@@ -178,7 +183,19 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
       // Dev: render green spheres at every ≤8-tri OWLib marker mesh.
       if (desc.debugMarkers) this.renderDebugMarkers(ctx.scene, this.mapRoot!)
+
+      // ── Health pack substructure ──────────────────────────────────────────
+      if (desc.healthPacks) {
+        // updateWorldMatrix ensures getWorldPosition returns correct values
+        // even before the first render frame.
+        this.mapRoot!.updateWorldMatrix(true, true)
+        const slots = extractHealthPackSlots(this.mapRoot!, desc.healthPacks.slots)
+        this.healthPackManager = new HealthPackManager(slots, desc.healthPacks.rotations ?? null)
+        this.healthPackManager.mount(ctx.scene, this.spawnCount)
+      }
     }
+
+    this.spawnCount++
 
     // ── Character entity (collision correction layer) ────────────────────
     this.entity = new DboxCharacterEntity(
@@ -203,6 +220,8 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.arenaMeshes = []
     for (const m of this.debugMarkerMeshes) m.parent?.remove(m)
     this.debugMarkerMeshes = []
+    this.healthPackManager?.unmount()
+    this.healthPackManager = null
     if (this.mapRoot) {
       this.mapRoot.parent?.remove(this.mapRoot)
       this.mapRoot = null
@@ -234,8 +253,10 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       marker.position.copy(pos)
       scene.add(marker)
       this.debugMarkerMeshes.push(marker)
+      // Include parent entity node name — OWLib entity nodes are named "Entity <HexId>.<instance>"
+      const entityNode = mesh.parent?.name ?? 'unknown'
       console.debug(
-        `[marker] ${mesh.name.padEnd(40)} x=${pos.x.toFixed(1).padStart(6)}  y=${pos.y.toFixed(1).padStart(6)}  z=${pos.z.toFixed(1).padStart(6)}`,
+        `[marker] entity=${entityNode.padEnd(24)} mesh=${mesh.name.padEnd(40)} x=${pos.x.toFixed(2).padStart(7)}  y=${pos.y.toFixed(2).padStart(7)}  z=${pos.z.toFixed(2).padStart(7)}`,
       )
     })
     console.debug(`[marker] total: ${this.debugMarkerMeshes.length} marker spheres rendered`)
@@ -253,6 +274,11 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.entity?.resolveCollision()
     // Walking resolve handles normal movement into walls.
     this.entity?.resolveWalkingCollision()
+
+    // Health pack pickup detection + cooldown advance.
+    // hpGain feeds the health system once it lands; log for now.
+    const hpGain = this.healthPackManager?.tick(this.getCharacter().position, simDelta) ?? 0
+    if (hpGain > 0) console.debug(`[DboxSceneModule] +${hpGain} HP from health pack`)
   }
 
   protected override handleJumpPressedEarly(): boolean {

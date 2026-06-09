@@ -241,6 +241,22 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
     ],
   },
 
+  healthPacks: {
+    slots: [
+      // ── Confirmed (positions match known mainhall-upper-corridor spawn labels) ──
+      { group: 'corridor',        entityType: '37C2', size: 'small' },  // ×2 instances
+
+      // ── Probable — visual verification needed ────────────────────────────────
+      { group: 'otherparts-west', entityType: '5120', size: 'small' },  // ×1 instance: (-31.6, 7.0, -23.6)
+      { group: 'mainhall-upper',  entityType: '51B9', size: 'small' },  // ×3 instances, y=10-17
+    ],
+    rotations: [
+      ['corridor', 'otherparts-west'],          // spread — one zone each side
+      ['corridor', 'mainhall-upper'],           // interior-heavy — corridors + upper cluster
+      ['otherparts-west', 'mainhall-upper'],    // flank layout — no direct corridor packs
+    ],
+  },
+
   debugMarkers: false,
 }
 
