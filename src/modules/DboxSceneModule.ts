@@ -20,6 +20,8 @@ import { resolvePublicUrl } from '@/utils/resolvePublicUrl'
 import { MeshTerrainSampler } from '@/utils/MeshTerrainSampler'
 import { extractHealthPackSlots } from '@/items/HealthPackExtractor'
 import { HealthPackManager } from '@/items/HealthPackManager'
+import { RoundManager } from '@/round/RoundManager'
+import type { RoundSnapshot } from '@/round/types'
 
 
 export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
@@ -48,6 +50,7 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   private healthPackManager: HealthPackManager | null = null
   /** Incremented each onMount() — drives health pack rotation index. */
   private spawnCount = 0
+  private readonly roundManager = new RoundManager()
 
   constructor(options: DboxSceneModuleOptions = {}) {
     const { champion = DOOMFIST_CONFIG, map, ...rest } = options
@@ -212,9 +215,13 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
     this.lab.mount(container, context.eventBus, ctx, { spawnBlobs: !mapLoaded })
     this.lab.setWallGeometry(activeWalls, activeBoxes)
+
+    // Start the pre-round countdown after the scene is fully mounted.
+    this.roundManager.start()
   }
 
   protected override async onUnmount(): Promise<void> {
+    this.roundManager.reset()
     this.lab.unmount()
     for (const m of this.arenaMeshes) m.parent?.remove(m)
     this.arenaMeshes = []
@@ -279,6 +286,14 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     // hpGain feeds the health system once it lands; log for now.
     const hpGain = this.healthPackManager?.tick(this.getCharacter().position, simDelta) ?? 0
     if (hpGain > 0) console.debug(`[DboxSceneModule] +${hpGain} HP from health pack`)
+
+    // Round timer — advances only during countdown and playing states.
+    this.roundManager.tick(simDelta)
+  }
+
+  /** Returns a pure-data snapshot of the current round state for UI polling. */
+  getRoundSnapshot(): RoundSnapshot {
+    return this.roundManager.getSnapshot()
   }
 
   protected override handleJumpPressedEarly(): boolean {

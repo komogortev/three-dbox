@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ThreeModule } from '@base/threejs-engine'
 import { InputModule, mergeBindings } from '@base/input'
@@ -11,6 +11,7 @@ import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
 import DboxHud from '@/hud/DboxHud.vue'
 import type { HudSnapshot } from '@/hud/types'
+import type { RoundSnapshot } from '@/round/types'
 
 const router  = useRouter()
 const route   = useRoute()
@@ -60,6 +61,47 @@ const hudSnapshot = reactive<HudSnapshot>({
   abilities: [],
 })
 let hudRaf = 0
+
+// ── Round state ─────────────────────────────────────────────────────────────
+const roundSnapshot = reactive<RoundSnapshot>({
+  state: 'idle',
+  countdownRemaining: 3,
+  timeRemaining: 60,
+  elapsed: 0,
+})
+
+/** "0:59", "1:00", etc. */
+const roundTimeDisplay = computed(() => {
+  const t = Math.ceil(roundSnapshot.timeRemaining)
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
+})
+
+/** Wall-clock timestamp (ms) when the playing state began. Used for GO! flash. */
+const playingStartTime = ref(0)
+
+/**
+ * True for the first 800ms of wall-clock time after the round starts.
+ * Uses performance.now() so the flash duration is independent of sim time-scale
+ * (devTimeScale ×4 would make elapsed-based flash nearly invisible).
+ */
+const showGoFlash = computed(
+  () => roundSnapshot.state === 'playing' && (performance.now() - playingStartTime.value) < 800,
+)
+
+async function restart(): Promise<void> {
+  // Capture query NOW — route is reactive and will reflect the menu route after
+  // the first push, so route.query would be empty on the second push.
+  const arenaQuery = { ...route.query }
+  await router.push({ name: 'menu' })
+  await router.push({ name: 'dbox', query: arenaQuery })
+}
+
+// Release pointer lock when round ends (overlay buttons need free cursor).
+// Record wall-clock start time when playing begins (drives GO! flash duration).
+watch(() => roundSnapshot.state, (state) => {
+  if (state === 'playing') playingStartTime.value = performance.now()
+  if (state === 'ended' && document.pointerLockElement) document.exitPointerLock()
+})
 
 /** Map ability IDs → display key labels from active bindings (not hardcoded). */
 const abilityKeyLabels: Record<string, string> = {
@@ -136,8 +178,11 @@ onMounted(async () => {
   await engine.mountChild('scene', sceneModule)
   worldReady.value = true
 
-  // Poll HUD state each frame from the scene module.
+  // Poll HUD + round state each frame from the scene module.
   const pollHud = (): void => {
+    // Round snapshot
+    Object.assign(roundSnapshot, sceneModule.getRoundSnapshot())
+
     const snap = sceneModule.getHudSnapshot()
     hudSnapshot.health = snap.health
     hudSnapshot.healthMax = snap.healthMax
@@ -176,6 +221,7 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
+  worldReady.value = false   // gates all overlays; prevents stale renders during teardown
   cancelAnimationFrame(hudRaf)
   window.removeEventListener('keydown', onKeyDown)
   clearTimeout(hintTimer)
@@ -300,6 +346,75 @@ onUnmounted(async () => {
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Time</dt><dd>P pause · F step 1 frame · R resume · [ ] slower / faster</dd></div>
       </dl>
     </div>
+
+    <!-- Round timer (top-center) — visible during playing state -->
+    <Transition
+      enter-active-class="transition-opacity duration-300"
+      leave-active-class="transition-opacity duration-300"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="worldReady && roundSnapshot.state === 'playing'"
+        class="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-1.5 rounded-lg border border-white/15 bg-black/50 backdrop-blur-sm pointer-events-none"
+      >
+        <span class="text-white/80 text-sm font-mono font-semibold tabular-nums tracking-widest">
+          {{ roundTimeDisplay }}
+        </span>
+      </div>
+    </Transition>
+
+    <!-- Countdown overlay (pre-round: 3, 2, 1 → GO!) -->
+    <Transition
+      enter-active-class="transition-opacity duration-200"
+      leave-active-class="transition-opacity duration-400"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="worldReady && (roundSnapshot.state === 'countdown' || showGoFlash)"
+        class="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"
+      >
+        <span
+          class="text-[10rem] leading-none font-black select-none drop-shadow-[0_4px_24px_rgba(0,0,0,0.9)]"
+          :class="showGoFlash ? 'text-emerald-400' : 'text-white/90'"
+        >
+          {{ showGoFlash ? 'GO!' : roundSnapshot.countdownRemaining }}
+        </span>
+      </div>
+    </Transition>
+
+    <!-- Round-end overlay -->
+    <Transition
+      enter-active-class="transition-opacity duration-500"
+      leave-active-class="transition-opacity duration-300"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+    >
+      <div
+        v-if="worldReady && roundSnapshot.state === 'ended'"
+        class="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      >
+        <div class="flex flex-col items-center gap-6 rounded-2xl border border-white/10 bg-black/75 px-16 py-10 shadow-2xl">
+          <h2 class="text-4xl font-black text-white tracking-[0.15em] uppercase">Time's Up</h2>
+          <p class="text-white/50 text-sm font-mono">Round complete</p>
+          <div class="flex gap-3 mt-2">
+            <button
+              class="px-6 py-2.5 rounded-lg bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/35 hover:text-cyan-100 font-semibold text-sm transition-all"
+              @click="restart"
+            >
+              Play Again
+            </button>
+            <button
+              class="px-6 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white/90 font-semibold text-sm transition-all"
+              @click="router.push('/')"
+            >
+              Menu
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- HUD overlay (health + abilities) -->
     <DboxHud v-if="worldReady" :snapshot="hudSnapshot" />

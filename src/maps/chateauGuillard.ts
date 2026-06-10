@@ -22,18 +22,24 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
   name: 'Château Guillard',
   glbUrl: '/maps/chateau-guillard.glb',
 
-  // Spawn points extracted from ≤8-tri OWLib entity marker quads.
-  // Zone labels derived from Blender collection membership.
-  // Enable debugMarkers to re-calibrate with green spheres in-game.
+  // Spawn points calibrated 2026-06-09 via debugMarkers entity survey.
+  //
+  // NOTE: Entity type 0345 (OW spawn-volume) are pure EMPTY nodes — no mesh quads.
+  // debugMarkers cannot find them. Points below are derived from ground-level entity
+  // marker positions (≤8-tri quads at Y≈0–1) confirmed walkable by terrain sampler.
+  //
+  // Excluded: otherparts-elevated-pickup (-30, Y≈5, 2) — floor at Y≈5 is above the
+  // terrain probe start (Y=1), so the sampler would miss it and the player falls through.
+  // Elevated spawn points require a higher probe start; deferred.
   spawnPoints: [
-    { label: 'yard-ground-pickup-cluster',    x:   9.4, z:   1.0 },
-    { label: 'mainhall-upper-corridor-a',     x:  12.8, z: -12.3 },
-    { label: 'mainhall-upper-corridor-b',     x:  23.6, z: -12.1 },
-    { label: 'otherparts-elevated-pickup',    x: -30.0, z:   2.0 },
-    { label: 'otherparts-ground-single',      x:  19.6, z: -12.6 },
+    { label: 'yard-center',              x:   9.4, z:   1.0 },   // entity 32A6, Y≈0, open outdoor
+    { label: 'mainhall-interior-west',   x:  12.8, z: -12.3 },  // entity 37C2 corridor, ground floor
+    { label: 'mainhall-interior-east',   x:  23.6, z: -12.1 },  // entity 37C2 corridor, ground floor
+    { label: 'otherparts-ground-east',   x:  19.6, z: -12.6 },  // entity 08EB, Y≈1, ground interior
   ],
-  // Fallback: east-wing interior (OtherParts zone), confirmed walkable.
-  spawnFallback: { x: 30, z: -15 },
+  // Fallback: yard center — open outdoor area, confirmed ground-level (entity 32A6).
+  // Note: fallback is only used when spawnPoints is empty; kept accurate for reference.
+  spawnFallback: { x: 9, z: 1 },
 
   physics: {
     // Patterns tested against mesh.name (case-insensitive). Any match = excluded
@@ -104,13 +110,24 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       '1BBE': 'static-prop-unique-f (×2)',
       '25F1': 'static-prop-unique-g (×2)',
       // ── Game object / interactive entity types ────────────────────────────
-      '0345': 'spawn-volume (×2 — player start locations, one per team)',
-      '0ED2': 'entity-marker (×2 — upper-corridor, used as spawn calibration points)',
-      '011B': 'entity-unknown (×1)',
-      '033E': 'entity-unknown (×1)',
-      '036B': 'entity-unknown (×1)',
-      '04A8': 'entity-unknown (×1)',
-      '0CB6': 'entity-unknown (×1)',
+      // NOTE: 0345 (spawn-volume) are pure EMPTY nodes — no ≤8-tri quads.
+      // debugMarkers cannot locate them; official spawn positions unknown.
+      '0345': 'spawn-volume (×2 — player start locations; EMPTY nodes, no mesh quads)',
+      '0ED2': 'entity-marker (×2 — upper-corridor calibration; EMPTY nodes)',
+      // ── Confirmed from 2026-06-09 debugMarkers survey ─────────────────────
+      '32A6': 'yard-ground-item (×2 — Y≈0, open yard; ground-level spawn candidate)',
+      '08EB': 'interior-ground-item (×1 — Y≈1, east interior; ground-level spawn candidate)',
+      '08EC': 'otherparts-elevated-item (×2 — Y≈5, west platform; above terrain probe)',
+      '37A3': 'elevated-unknown (×1 — Y≈18.5, high wall fixture)',
+      '3503': 'wall-fixture (×14 — X≈23.39, Y=10–15; row of decorative fixtures on east wall)',
+      '3809': 'sub-floor-trigger (×1 — Y≈−3, below interior floor; trigger or boundary)',
+      '0210': 'elevated-unknown (×2 — Y=6.6 and Y=20.2)',
+      '0F5A': 'elevated-outdoor (×2 — Y=6, Z≈22; outdoor upper level)',
+      '4FB3': 'elevated-item-a (×1 — Y=8, Z≈24)',
+      '4FE5': 'elevated-item-b (×1 — Y=5, Z≈24)',
+      '4FEB': 'elevated-item-c (×1 — Y=8, Z≈−18)',
+      '5011': 'elevated-item-d (×1 — Y=5, Z≈24)',
+      'B9A8': 'boundary-marker (×4 — Y≈−1, far-field XZ; map boundary triggers)',
     },
   },
 
