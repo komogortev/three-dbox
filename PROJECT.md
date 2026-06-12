@@ -23,7 +23,7 @@ A standalone game fork of `threejs-engine-dev`, extracting and extending the dbo
 
 ## Current state
 
-**Phase 2 in progress (2026-04-13).** Phase 1 complete (2026-04-12). Forked from `threejs-engine-dev`, wall collision + HUD overlay done.
+**Phase 3 complete (2026-06-09) → Phase 4 round flow in progress.** Phase 1 ✅ (2026-04-12) · Phase 2 partial — HUD ✅, remainder deferred behind Phase 3 · Phase 3 ✅ — OW map pipeline (Château Guillard GLB + Rapier trimesh via `@base/physics`), arena registry, health-pack substructure, spawn calibration · T-B17 round structure ✅ (2026-06-09). Live tracking: [STATE.md](./STATE.md) · plan of record: [docs/ASSESSMENT-2026-06-10.md](./docs/ASSESSMENT-2026-06-10.md).
 
 | Ability | Input | Behavior | CD |
 |---------|-------|----------|----|
@@ -32,7 +32,7 @@ A standalone game fork of `threejs-engine-dev`, extracting and extending the dbo
 | Seismic Slam | E hold/release | Mouse-aim cone preview, dash to apex + downward slam, AoE knockback on blobs | 6s |
 
 Character: `dfist_base.glb` (Doomfist-style mesh, Trinity rig, meshopt + WebP).
-Environment: 80×80m walled arena inside 100×100m terrain. 3 angled interior walls + 2 box pillars. 5 NPC blobs.
+Environment: two arenas via menu — Château Guillard (OW1 map GLB, Rapier trimesh collision) and the sandbox calibration arena (80×80m walls, ramps, pool, 5 NPC blobs).
 Camera: FPV/TPV toggle via Tab.
 Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 
@@ -51,7 +51,7 @@ Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 - ~~**Input remapping for abilities**~~ — DONE: settings bindings flow into HUD labels dynamically
 - **HUD overlay** — DONE (2026-04-13): health bar + ability cooldown display, settings-aware key labels
 - **No damage/health system.** Blobs react to physics but have no HP. HUD shows dummy 250/250 health.
-- **No round structure.** Freeform sandbox — no start/end/scoring.
+- ~~**No round structure.**~~ — DONE (T-B17, 2026-06-09): countdown → 60s round → end screen. Results stats still pending (needs health/damage system — see `docs/ASSESSMENT-2026-06-10.md`).
 - **Meteor Strike not implemented.** Three abilities only.
 
 ## Architecture
@@ -60,13 +60,15 @@ Time control: pause, step-frame, slow-mo (P/F/R/[/]).
 |-------|------|-------|
 | Framework | Vue 3 + Vite | SPA, vue-router for menu/gameplay/settings |
 | 3D Engine | Three.js 0.172 via `@base/threejs-engine` | ThreeModule lifecycle |
-| Physics | `@base/player-three` PlayerController | Carry impulse + terrain sampling (not Rapier) |
-| Collision | `src/collision/WallCollider.ts` | Circle-vs-plane + circle-vs-box, slide math |
-| Character | `src/entities/DboxCharacterEntity.ts` | Post-tick correction layer over PlayerController |
+| Physics | `@base/player-three` PlayerController + `@base/physics` (Rapier 0.14, query-only) | Hybrid: carry impulse + terrain sampling drive movement; Rapier trimesh answers wall/step queries on OW maps — no Rapier dynamics |
+| Collision | `src/collision/WallCollider.ts` | Sandbox-mode analytic walls: circle-vs-plane + circle-vs-box, slide math |
+| Character | `src/entities/DboxCharacterEntity.ts` | Post-tick correction layer — dual-sphere Rapier probe + step-climb (map mode), analytic resolve (sandbox) |
 | Input | `@base/input` InputModule | Keyboard + gamepad, pointer lock, configurable bindings |
 | Camera | `@base/camera-three` | Close-follow preset, FPV/TPV toggle |
 | Scene | `@base/scene-builder` SceneDescriptor | Terrain + atmosphere + character config |
-| Abilities | `DboxLab` (local) | Composed into `DboxSceneModule`, uses `GameplayLabHost` interface |
+| Abilities | `DoomfistLab` (local, implements `IAbilityLab`) | Composed into `DboxSceneModule` via `GameplayLabHost`; lab interface enables future champions |
+| Maps | `src/maps/MapDescriptor.ts` + `src/arenas/registry.ts` | Data-first per-map descriptor (spawns, physics filters, display overrides, health packs); 2-file map onboarding |
+| Round | `src/round/RoundManager.ts` | countdown→playing→ended state machine, sim-time ticked, polled by `DboxView` |
 
 ## Alpha scope
 
