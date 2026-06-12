@@ -28,10 +28,14 @@ export class SandboxSceneModule extends ThirdPersonSceneModule {
 
   protected override async onMount(container: HTMLElement, context: EngineContext): Promise<void> {
     await super.onMount(container, context)
+    if (!this.useSandboxScene()) return
     this.setSampler(new CalibrationTerrainSampler())
     const ctx = context as ThreeContext
     this.buildSandboxGeometry(ctx.scene)
   }
+
+  /** Override to return false to skip calibration geometry and sampler (e.g. when an OW map is loaded). */
+  protected useSandboxScene(): boolean { return true }
 
   protected override async onUnmount(): Promise<void> {
     for (const m of this.sandboxMeshes) m.parent?.remove(m)

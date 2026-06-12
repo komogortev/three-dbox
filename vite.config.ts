@@ -58,6 +58,7 @@ export default defineConfig(({ mode }) => {
             scope: base,
           },
           workbox: {
+            maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
             navigateFallback: `${base}index.html`,
             navigateFallbackDenylist: [/^\/api\//],
           },

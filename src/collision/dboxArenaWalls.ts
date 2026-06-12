@@ -81,8 +81,11 @@ function wallMaterial(color: number, emissive: number): THREE.MeshStandardMateri
 /**
  * Build Three.js meshes for arena walls. Add returned objects to the scene.
  * Returns a flat array; caller is responsible for cleanup on unmount.
+ *
+ * @param boundaryOnly - when true, only the 4 outer boundary walls are built.
+ *   Use when an OW map GLB provides interior geometry.
  */
-export function buildArenaWallMeshes(): THREE.Object3D[] {
+export function buildArenaWallMeshes(boundaryOnly = false): THREE.Object3D[] {
   const meshes: THREE.Object3D[] = []
 
   // ── Boundary walls (4 thin box meshes) ──────────────────────────────────
@@ -111,52 +114,53 @@ export function buildArenaWallMeshes(): THREE.Object3D[] {
   addBoundaryWall(WALL_THICKNESS, size, ARENA_HALF, 0)
   addBoundaryWall(WALL_THICKNESS, size, -ARENA_HALF, 0)
 
-  // ── Angled walls (visual slabs) ─────────────────────────────────────────
-  const angledMat = wallMaterial(ANGLED_WALL_COLOR, ANGLED_WALL_EMISSIVE)
+  if (!boundaryOnly) {
+    // ── Angled walls (visual slabs) ───────────────────────────────────────
+    const angledMat = wallMaterial(ANGLED_WALL_COLOR, ANGLED_WALL_EMISSIVE)
 
-  const addAngledWall = (
-    px: number, pz: number,
-    nx: number, nz: number,
-    length: number,
-  ): void => {
-    const geo = new THREE.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
-    const mesh = new THREE.Mesh(geo, angledMat)
-    mesh.position.set(px, WALL_HEIGHT / 2, pz)
-    // Rotate to align perpendicular to normal
-    mesh.rotation.y = Math.atan2(nx, nz)
-    mesh.receiveShadow = true
-    meshes.push(mesh)
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), wire)
-    edges.position.copy(mesh.position)
-    edges.rotation.copy(mesh.rotation)
-    meshes.push(edges)
-  }
+    const addAngledWall = (
+      px: number, pz: number,
+      nx: number, nz: number,
+      length: number,
+    ): void => {
+      const geo = new THREE.BoxGeometry(length, WALL_HEIGHT, WALL_THICKNESS)
+      const mesh = new THREE.Mesh(geo, angledMat)
+      mesh.position.set(px, WALL_HEIGHT / 2, pz)
+      mesh.rotation.y = Math.atan2(nx, nz)
+      mesh.receiveShadow = true
+      meshes.push(mesh)
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), wire)
+      edges.position.copy(mesh.position)
+      edges.rotation.copy(mesh.rotation)
+      meshes.push(edges)
+    }
 
-  // NE 45° wall — 10m long
-  addAngledWall(28, 28, -Math.SQRT1_2, -Math.SQRT1_2, 10)
-  // SW 45° wall — 10m long
-  addAngledWall(-28, -28, Math.SQRT1_2, Math.SQRT1_2, 10)
-  // Mid-west 30° wall — 12m long
-  addAngledWall(-20, 0, Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), 12)
+    // NE 45° wall — 10m long
+    addAngledWall(28, 28, -Math.SQRT1_2, -Math.SQRT1_2, 10)
+    // SW 45° wall — 10m long
+    addAngledWall(-28, -28, Math.SQRT1_2, Math.SQRT1_2, 10)
+    // Mid-west 30° wall — 12m long
+    addAngledWall(-20, 0, Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), 12)
 
-  // ── Pillars (box meshes) ────────────────────────────────────────────────
-  const pillarMat = wallMaterial(PILLAR_COLOR, PILLAR_EMISSIVE)
-  for (const box of DBOX_ARENA_BOXES) {
-    const w = box.maxX - box.minX
-    const d = box.maxZ - box.minZ
-    const geo = new THREE.BoxGeometry(w, WALL_HEIGHT, d)
-    const mesh = new THREE.Mesh(geo, pillarMat)
-    mesh.position.set(
-      (box.minX + box.maxX) / 2,
-      WALL_HEIGHT / 2,
-      (box.minZ + box.maxZ) / 2,
-    )
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    meshes.push(mesh)
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), wire)
-    edges.position.copy(mesh.position)
-    meshes.push(edges)
+    // ── Pillars (box meshes) ──────────────────────────────────────────────
+    const pillarMat = wallMaterial(PILLAR_COLOR, PILLAR_EMISSIVE)
+    for (const box of DBOX_ARENA_BOXES) {
+      const w = box.maxX - box.minX
+      const d = box.maxZ - box.minZ
+      const geo = new THREE.BoxGeometry(w, WALL_HEIGHT, d)
+      const mesh = new THREE.Mesh(geo, pillarMat)
+      mesh.position.set(
+        (box.minX + box.maxX) / 2,
+        WALL_HEIGHT / 2,
+        (box.minZ + box.maxZ) / 2,
+      )
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      meshes.push(mesh)
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), wire)
+      edges.position.copy(mesh.position)
+      meshes.push(edges)
+    }
   }
 
   return meshes

@@ -8,6 +8,7 @@ import type { WallPlane, WallBox } from '@/collision'
 import { resolveCircleVsPlane, resolveCircleVsBox } from '@/collision'
 import type { ChampionConfig } from '@/champions/ChampionConfig'
 import type { AbilityHudEntry } from '@/hud/types'
+import type { IAbilityLab } from './IAbilityLab'
 
 // ── Rendering / algorithm constants (not gameplay-tunable) ───────────────────
 const SLAM_CONE_SEG = 22
@@ -47,7 +48,7 @@ interface SlamApex {
  * OW1-style ability prototype + pool NPC blobs, composed into {@link DboxSceneModule}.
  * Keyboard abilities use `input:action` (`ability_primary` / `ability_secondary`); rocket punch uses {@link RocketPunchPointer}.
  */
-export class DboxLab {
+export class DoomfistLab implements IAbilityLab {
   private pendingRocketPunchHoldS: number | null = null
   private lastPunchMs = -1e9
   private lastUppercutMs = -1e9
@@ -77,10 +78,10 @@ export class DboxLab {
     private readonly cfg: ChampionConfig,
   ) {}
 
-  mount(container: HTMLElement, eventBus: EventBus, ctx: ThreeContext): void {
+  mount(container: HTMLElement, eventBus: EventBus, ctx: ThreeContext, opts?: { spawnBlobs?: boolean }): void {
     this.slamHostCtx = ctx
     this.pointerRoot = container
-    this.spawnPoolBlobs(ctx.scene)
+    if (opts?.spawnBlobs !== false) this.spawnPoolBlobs(ctx.scene)
 
     const onPointerMove = (e: PointerEvent): void => {
       const el = this.pointerRoot
