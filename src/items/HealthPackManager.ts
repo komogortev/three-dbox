@@ -29,8 +29,8 @@ interface LivePack {
  *       → .tick(playerPos, dt)           — pickup detection + cooldown advance
  *       → .unmount()                     — dispose geometry + materials
  *
- * Rotation index is advanced by DboxSceneModule.spawnCount so each visit to the
- * map cycles to the next layout in the descriptor's `rotations` array.
+ * Rotation index is advanced by DboxSceneModule's module-scope counter so each
+ * visit to the map cycles to the next layout in the descriptor's `rotations` array.
  */
 export class HealthPackManager {
   private live: LivePack[] = []

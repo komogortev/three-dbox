@@ -25,10 +25,11 @@ export interface MapDescriptor {
   /** Fallback spawn Z coordinate. */
   spawnZ: number
   /**
-   * Candidate spawn positions [x, z].  When provided, a random entry is used
-   * each mount instead of spawnX/spawnZ.  Floor Y is sampled at runtime.
+   * Candidate spawn positions.  When provided, used instead of spawnX/spawnZ.
+   * Floor Y is sampled at runtime.  Passed through from the data form verbatim
+   * (labels kept for spawn/respawn debug logging).
    */
-  spawnPoints?: [number, number][]
+  spawnPoints?: SpawnPoint[]
   /**
    * Return false to exclude a Mesh from Rapier trimesh and terrain sampler.
    * Defaults to including all meshes when omitted.
@@ -54,6 +55,13 @@ export interface MapDescriptor {
    * for spawn point calibration.
    */
   debugMarkers?: boolean
+  /**
+   * Dev: with debugMarkers, also render magenta spheres at OWLib entity nodes
+   * of these 4-hex type IDs.  Pure-EMPTY entities (e.g. 0345 spawn volumes)
+   * carry no mesh, so the ≤8-tri survey above cannot see them — this name-scan
+   * is the only way to visualize them.  Logged as `[entity]` console.debug lines.
+   */
+  debugEntityTypes?: string[]
 }
 
 // ── Blender scene documentation ───────────────────────────────────────────────
@@ -127,8 +135,8 @@ export interface HealthPackConfig {
   slots: HealthPackSlotDef[]
   /**
    * Per-spawn rotation layouts.  Each entry is the set of group names active on
-   * that spawn.  DboxSceneModule advances the index on each onMount() call so
-   * each visit to the map uses a different subset.
+   * that spawn.  DboxSceneModule advances a module-scope counter on each map
+   * mount so each visit to the map uses a different subset.
    * If absent → all slots are active every spawn.
    */
   rotations?: string[][]
@@ -143,6 +151,12 @@ export interface SpawnPoint {
   x: number
   /** World-space Z coordinate. */
   z: number
+  /**
+   * Optional spawn facing yaw (radians).  Consumed by SP-2's placeAtSpawn()
+   * (controller facing reset on placement); currently unused — omitted →
+   * current facing is kept.
+   */
+  yaw?: number
 }
 
 /**
@@ -193,7 +207,8 @@ export interface MapDescriptorData {
     hiddenTypeCodes: string[]
     /**
      * Annotation of OWLib entity IDs found in the GLB scene graph.
-     * Node names follow the pattern "Entity <HexId>.<InstanceNum>".
+     * Node names follow the observed convention "00000000<TypeHex4><Instance3>"
+     * (e.g. "0000000037C2001" → type 37C2, instance 1) — see maps/entityScan.ts.
      * Key: bare hex ID (e.g. '0345'), value: human-readable role.
      * Used as documentation; not consumed at runtime.
      */
@@ -237,6 +252,12 @@ export interface MapDescriptorData {
    * positions to console.debug.  Helps calibrate spawn points in-game.
    */
   debugMarkers?: boolean
+  /**
+   * Dev: with debugMarkers, also render magenta spheres at OWLib entity nodes
+   * of these 4-hex type IDs (e.g. ['0345']).  Covers pure-EMPTY entities that
+   * the ≤8-tri mesh survey cannot see.
+   */
+  debugEntityTypes?: string[]
 }
 
 // ── Compiler ──────────────────────────────────────────────────────────────────
@@ -265,11 +286,12 @@ export function compileMapDescriptor(data: MapDescriptorData): MapDescriptor {
     glbUrl: data.glbUrl,
     spawnX: data.spawnFallback.x,
     spawnZ: data.spawnFallback.z,
-    spawnPoints: data.spawnPoints.map(p => [p.x, p.z]),
+    spawnPoints: data.spawnPoints,
     physicsFilter,
     owlibTechMat: techMatRe,
     meshDisplayOverrides: meshDisplayOverrides.length ? meshDisplayOverrides : undefined,
     healthPacks: data.healthPacks,
     debugMarkers: data.debugMarkers,
+    debugEntityTypes: data.debugEntityTypes,
   }
 }

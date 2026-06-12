@@ -6,6 +6,7 @@ import { InputModule, mergeBindings } from '@base/input'
 import { useInputSettings } from '@/composables/useInputSettings'
 import { DBOX_DEFAULT_BINDINGS } from '@/config/dboxBindings'
 import { DboxSceneModule } from '@/modules/DboxSceneModule'
+import { DOOMFIST_CONFIG } from '@/champions/doomfist'
 import { ARENA_REGISTRY } from '@/arenas/registry'
 import { dboxScene } from '@/scenes/dbox'
 import { useShellContext } from '@/composables/useShellContext'
@@ -44,6 +45,16 @@ function fk(keys: string[]): string {
 }
 
 const kb = activeBindings.keyboard
+
+// Keymap panel ability numbers — sourced from champion config so tuning changes
+// can't desync the panel.  DboxView always runs the default Doomfist champion.
+const ab = {
+  punchChargeMaxS: DOOMFIST_CONFIG.rocketPunch.chargeMaxS,
+  punchCdS: DOOMFIST_CONFIG.rocketPunch.cooldownS,
+  uppercutCdS: DOOMFIST_CONFIG.risingUppercut.cooldownS,
+  uppercutLockS: DOOMFIST_CONFIG.risingUppercut.victimLockS,
+  slamCdS: DOOMFIST_CONFIG.seismicSlam.cooldownS,
+}
 
 const arenaOptions = ARENA_REGISTRY.find(a => a.id === arenaId)?.options ?? { descriptor: dboxScene }
 
@@ -339,9 +350,9 @@ onUnmounted(async () => {
       <p class="text-white/55 text-[9px] font-mono uppercase tracking-widest mb-1.5">Key map</p>
       <dl class="space-y-1 text-[10px] font-mono leading-snug text-white/45">
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Move</dt><dd>W A S D · {{ fk(kb.sprint) }} sprint · {{ fk(kb.jump) }} jump · {{ fk(kb.crouch) }} crouch</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 1</dt><dd>{{ fk(kb.ability_tertiary) }} hold → release · ~1.4 s max · 4 s CD</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 2</dt><dd>{{ fk(kb.ability_primary) }} · 6 s CD · NPCs in cone: lift + 0.6 s lock</dd></div>
-        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 3</dt><dd>{{ fk(kb.ability_secondary) }} hold → cone at mouse→ground · release: dash + slam · 6 s CD</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 1</dt><dd>{{ fk(kb.ability_tertiary) }} hold → release · ~{{ ab.punchChargeMaxS }} s max · {{ ab.punchCdS }} s CD</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 2</dt><dd>{{ fk(kb.ability_primary) }} · {{ ab.uppercutCdS }} s CD · NPCs in cone: lift + {{ ab.uppercutLockS }} s lock</dd></div>
+        <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Ability 3</dt><dd>{{ fk(kb.ability_secondary) }} hold → cone at mouse→ground · release: dash + slam · {{ ab.slamCdS }} s CD</dd></div>
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Camera</dt><dd>{{ fk(kb.toggle_camera) }} — first / third person</dd></div>
         <div class="flex gap-2"><dt class="shrink-0 text-cyan-400/90 w-14">Time</dt><dd>P pause · F step 1 frame · R resume · [ ] slower / faster</dd></div>
       </dl>
