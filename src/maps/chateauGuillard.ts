@@ -23,7 +23,7 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
   glbUrl: '/maps/chateau-guillard.glb',
 
   // Spawn points calibrated 2026-06-09 (debugMarkers survey), decoupled from
-  // health-pack entities 2026-06-10 (SP-1, docs/PLAN-SPAWN-2026-06-10.md).
+  // health-pack entities 2026-06-12 (SP-1, docs/PLAN-SPAWN-2026-06-10.md).
   //
   // DECOUPLING INVARIANT: every player spawn point stays >1.5 m XZ (pack pickup
   // radius) from every CONFIGURED health-pack slot node (37C2/51B9/5120 below).
@@ -31,7 +31,7 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
   // 37C2 pack nodes (the 2026-06-09 calibration sourced them from the same
   // item-marker survey); both are nudged 3 m west along the corridor axis.
   //
-  // 0345 spawn volumes (entityScan survey 2026-06-10): located, but BOTH sit at
+  // 0345 spawn volumes (entityScan survey 2026-06-12): located, but BOTH sit at
   // (-19.5, Y≈2.0, -1.7) ±0.3 m — the OW spawn-room anchor pair, too clustered
   // for a deathmatch spawn set (plan gate → fallback branch). Recorded in
   // owlib.entityTypes; revisit for Phase 5 spawn-room polish.
@@ -121,7 +121,7 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       // ── Game object / interactive entity types ────────────────────────────
       // NOTE: 0345/0ED2 are pure EMPTY nodes (raw names "Entity 00000000XXXX.NNN"
       // + _WRAP) — no ≤8-tri quads, invisible to debugMarkers' mesh pass.
-      // Located 2026-06-10 via entityScan name-scan (debugEntityTypes flag).
+      // Located 2026-06-12 via entityScan name-scan (debugEntityTypes flag).
       '0345': 'spawn-volume (×2 — OW spawn-room anchor pair, BOTH at (-19.5, 2.0, -1.7)±0.3; too clustered for deathmatch spawns)',
       '0ED2': 'entity-marker (×2 — upper-level: (18.2, 6.9, 23.0) and (-19.0, 10.0, 23.7))',
       // ── Confirmed from 2026-06-09 debugMarkers survey ─────────────────────
@@ -270,7 +270,7 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
 
   healthPacks: {
     slots: [
-      // ── Confirmed via entity survey 2026-06-10 ───────────────────────────────
+      // ── Confirmed via entity survey 2026-06-12 ───────────────────────────────
       // 37C2 nodes sit on the mainhall UPPER corridor (Y≈6.9), not the ground
       // floor — ground-level spawns share their XZ region but never their Y.
       { group: 'corridor',        entityType: '37C2', size: 'small' },  // ×2 instances, Y≈6.9
