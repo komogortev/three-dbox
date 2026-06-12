@@ -22,20 +22,28 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
   name: 'Château Guillard',
   glbUrl: '/maps/chateau-guillard.glb',
 
-  // Spawn points calibrated 2026-06-09 via debugMarkers entity survey.
+  // Spawn points calibrated 2026-06-09 (debugMarkers survey), decoupled from
+  // health-pack entities 2026-06-12 (SP-1, docs/PLAN-SPAWN-2026-06-10.md).
   //
-  // NOTE: Entity type 0345 (OW spawn-volume) are pure EMPTY nodes — no mesh quads.
-  // debugMarkers cannot find them. Points below are derived from ground-level entity
-  // marker positions (≤8-tri quads at Y≈0–1) confirmed walkable by terrain sampler.
+  // DECOUPLING INVARIANT: every player spawn point stays >1.5 m XZ (pack pickup
+  // radius) from every CONFIGURED health-pack slot node (37C2/51B9/5120 below).
+  // The former mainhall-interior-west/east points reused the exact XZ of the two
+  // 37C2 pack nodes (the 2026-06-09 calibration sourced them from the same
+  // item-marker survey); both are nudged 3 m west along the corridor axis.
+  //
+  // 0345 spawn volumes (entityScan survey 2026-06-12): located, but BOTH sit at
+  // (-19.5, Y≈2.0, -1.7) ±0.3 m — the OW spawn-room anchor pair, too clustered
+  // for a deathmatch spawn set (plan gate → fallback branch). Recorded in
+  // owlib.entityTypes; revisit for Phase 5 spawn-room polish.
   //
   // Excluded: otherparts-elevated-pickup (-30, Y≈5, 2) — floor at Y≈5 is above the
   // terrain probe start (Y=1), so the sampler would miss it and the player falls through.
   // Elevated spawn points require a higher probe start; deferred.
   spawnPoints: [
     { label: 'yard-center',              x:   9.4, z:   1.0 },   // entity 32A6, Y≈0, open outdoor
-    { label: 'mainhall-interior-west',   x:  12.8, z: -12.3 },  // entity 37C2 corridor, ground floor
-    { label: 'mainhall-interior-east',   x:  23.6, z: -12.1 },  // entity 37C2 corridor, ground floor
-    { label: 'otherparts-ground-east',   x:  19.6, z: -12.6 },  // entity 08EB, Y≈1, ground interior
+    { label: 'mainhall-corridor-west',   x:   9.8, z: -12.3 },   // 3 m W of pack 37C2-2; ground floor (packs float on the upper corridor, Y≈6.9)
+    { label: 'mainhall-corridor-east',   x:  20.6, z: -12.1 },   // 3 m W of pack 37C2-1; ~1.1 m from otherparts-ground-east (spawn-to-spawn, allowed)
+    { label: 'otherparts-ground-east',   x:  19.6, z: -12.6 },   // entity 08EB, Y≈1, ground interior
   ],
   // Fallback: yard center — open outdoor area, confirmed ground-level (entity 32A6).
   // Note: fallback is only used when spawnPoints is empty; kept accurate for reference.
@@ -45,8 +53,9 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
     // Patterns tested against mesh.name (case-insensitive). Any match = excluded
     // from Rapier trimesh and terrain sampler.
     //
-    // Mesh naming convention: Submesh_<N>.<HASH>.<instance>
-    // Hashes exclusive to non-playable collections are safe to match via '\.HASH\.'.
+    // Blender mesh naming convention: Submesh_<N>.<HASH>.<instance> — but the
+    // dots do NOT survive import (see NOTE below), so hashes exclusive to
+    // non-playable collections are matched as bare substrings, never '\.HASH\.'.
     excludeNamePatterns: [
       // OWLib rig-visualisation helpers — small bone cylinders that trap the capsule.
       '^smd_bone_vis',
@@ -110,10 +119,11 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
       '1BBE': 'static-prop-unique-f (×2)',
       '25F1': 'static-prop-unique-g (×2)',
       // ── Game object / interactive entity types ────────────────────────────
-      // NOTE: 0345 (spawn-volume) are pure EMPTY nodes — no ≤8-tri quads.
-      // debugMarkers cannot locate them; official spawn positions unknown.
-      '0345': 'spawn-volume (×2 — player start locations; EMPTY nodes, no mesh quads)',
-      '0ED2': 'entity-marker (×2 — upper-corridor calibration; EMPTY nodes)',
+      // NOTE: 0345/0ED2 are pure EMPTY nodes (raw names "Entity 00000000XXXX.NNN"
+      // + _WRAP) — no ≤8-tri quads, invisible to debugMarkers' mesh pass.
+      // Located 2026-06-12 via entityScan name-scan (debugEntityTypes flag).
+      '0345': 'spawn-volume (×2 — OW spawn-room anchor pair, BOTH at (-19.5, 2.0, -1.7)±0.3; too clustered for deathmatch spawns)',
+      '0ED2': 'entity-marker (×2 — upper-level: (18.2, 6.9, 23.0) and (-19.0, 10.0, 23.7))',
       // ── Confirmed from 2026-06-09 debugMarkers survey ─────────────────────
       '32A6': 'yard-ground-item (×2 — Y≈0, open yard; ground-level spawn candidate)',
       '08EB': 'interior-ground-item (×1 — Y≈1, east interior; ground-level spawn candidate)',
@@ -260,8 +270,10 @@ const CHATEAU_GUILLARD_DATA: MapDescriptorData = {
 
   healthPacks: {
     slots: [
-      // ── Confirmed (positions match known mainhall-upper-corridor spawn labels) ──
-      { group: 'corridor',        entityType: '37C2', size: 'small' },  // ×2 instances
+      // ── Confirmed via entity survey 2026-06-12 ───────────────────────────────
+      // 37C2 nodes sit on the mainhall UPPER corridor (Y≈6.9), not the ground
+      // floor — ground-level spawns share their XZ region but never their Y.
+      { group: 'corridor',        entityType: '37C2', size: 'small' },  // ×2 instances, Y≈6.9
 
       // ── Probable — visual verification needed ────────────────────────────────
       { group: 'otherparts-west', entityType: '5120', size: 'small' },  // ×1 instance: (-31.6, 7.0, -23.6)

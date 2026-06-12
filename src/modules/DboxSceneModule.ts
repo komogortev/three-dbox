@@ -18,6 +18,7 @@ import { DOOMFIST_CONFIG } from '@/champions/doomfist'
 import type { HudSnapshot } from '@/hud/types'
 import { resolvePublicUrl } from '@/utils/resolvePublicUrl'
 import { MeshTerrainSampler } from '@/utils/MeshTerrainSampler'
+import { extractEntityNodes } from '@/maps/entityScan'
 import { extractHealthPackSlots } from '@/items/HealthPackExtractor'
 import { HealthPackManager } from '@/items/HealthPackManager'
 import { RoundManager } from '@/round/RoundManager'
@@ -33,6 +34,16 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
 }
 
 /**
+ * Health-pack rotation counter (assessment fix A2).  Module scope on purpose:
+ * DboxView constructs a fresh DboxSceneModule on every navigation — including
+ * the Play Again menu-detour — so an instance field never exceeds 0 at mount
+ * time.  Module scope survives remounts within the SPA session, which is the
+ * "each visit cycles the layout" intent.  Global across arenas; key by arena
+ * id when map #2 lands.
+ */
+let packRotationCounter = 0
+
+/**
  * Sandbox calibration world + composed {@link DboxLab} (abilities, slam preview, NPC blobs)
  * + {@link DboxCharacterEntity} (wall collision correction layer).
  *
@@ -41,15 +52,14 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
 export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHost {
   private readonly lab: IAbilityLab
   private readonly champion: ChampionConfig
-  private readonly map: MapDescriptor | undefined
+  /** Cleared at mount when the map GLB fails to load → sandbox fallback (A3). */
+  private map: MapDescriptor | undefined
   private entity: DboxCharacterEntity | null = null
   private arenaMeshes: THREE.Object3D[] = []
   private physicsWorld: PhysicsWorld | null = null
   private mapRoot: THREE.Object3D | null = null
   private debugMarkerMeshes: THREE.Mesh[] = []
   private healthPackManager: HealthPackManager | null = null
-  /** Incremented each onMount() — drives health pack rotation index. */
-  private spawnCount = 0
   private readonly roundManager = new RoundManager()
 
   constructor(options: DboxSceneModuleOptions = {}) {
@@ -88,20 +98,34 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   }
 
   protected override async onMount(container: HTMLElement, context: EngineContext): Promise<void> {
-    await super.onMount(container, context)
     const ctx = context as ThreeContext
 
-    // ── OW map GLB ────────────────────────────────────────────────────────
+    // ── OW map GLB + physics init — BEFORE super.onMount() (A3) ───────────
+    // super consults useSandboxScene() to decide whether to build calibration
+    // terrain/sampler/geometry.  Loading first lets a failure clear this.map so
+    // the fallback is a genuinely playable sandbox arena, not a void.  Scene
+    // insertion waits until after super (scene graph not touched here).
+    let mapScene: THREE.Object3D | null = null
     if (this.map) {
       try {
         const gltf = await ctx.assets.loadGLTF(resolvePublicUrl(this.map.glbUrl))
-        this.mapRoot = gltf.scene
-        ctx.scene.add(this.mapRoot)
+        mapScene = gltf.scene
         this.physicsWorld = await PhysicsWorld.create()
-        this.physicsWorld.addStaticMesh(this.mapRoot, this.map.physicsFilter)
       } catch (err) {
-        console.warn('[DboxSceneModule] Map GLB load failed — using hand-authored arena:', err)
+        console.error('[DboxSceneModule] Map load failed — falling back to sandbox arena:', err)
+        this.map = undefined
+        mapScene = null
+        this.physicsWorld?.dispose()
+        this.physicsWorld = null
       }
+    }
+
+    await super.onMount(container, context)
+
+    if (this.map && mapScene && this.physicsWorld) {
+      this.mapRoot = mapScene
+      ctx.scene.add(this.mapRoot)
+      this.physicsWorld.addStaticMesh(this.mapRoot, this.map.physicsFilter)
     }
 
     const mapLoaded = this.mapRoot !== null
@@ -144,12 +168,14 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       this.setSampler(new MeshTerrainSampler(terrainMeshes, null, () => Math.max(character.position.y + 1.0, 1.0)))
 
       // Pick spawn: random from spawnPoints list if provided, fallback to spawnX/Z.
+      // (SP-2 replaces the random pick with a round-robin cursor + respawn path.)
       let spawnX = desc.spawnX
       let spawnZ = desc.spawnZ
       if (desc.spawnPoints && desc.spawnPoints.length > 0) {
         const pt = desc.spawnPoints[Math.floor(Math.random() * desc.spawnPoints.length)]
-        spawnX = pt[0]
-        spawnZ = pt[1]
+        spawnX = pt.x
+        spawnZ = pt.z
+        console.debug(`[DboxSceneModule] spawn at '${pt.label}' (${pt.x.toFixed(1)}, ${pt.z.toFixed(1)})`)
       }
       const floorY = this.sampleTerrainSurfaceY(spawnX, spawnZ)
       const spawnY = floorY + PLAYER_CAPSULE_HALF_HEIGHT
@@ -194,11 +220,10 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
         this.mapRoot!.updateWorldMatrix(true, true)
         const slots = extractHealthPackSlots(this.mapRoot!, desc.healthPacks.slots)
         this.healthPackManager = new HealthPackManager(slots, desc.healthPacks.rotations ?? null)
-        this.healthPackManager.mount(ctx.scene, this.spawnCount)
+        this.healthPackManager.mount(ctx.scene, packRotationCounter)
+        packRotationCounter++
       }
     }
-
-    this.spawnCount++
 
     // ── Character entity (collision correction layer) ────────────────────
     this.entity = new DboxCharacterEntity(
@@ -240,10 +265,14 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   }
 
   /**
-   * Dev tool: place a bright sphere at every mesh node with ≤8 triangles.
-   * These are OWLib entity marker quads — health packs, spawn volumes, triggers.
-   * Uses Three.js getWorldPosition so parent rotations are handled correctly.
-   * Logs "(marker) MeshName  x  y  z" to console.debug for coordinate capture.
+   * Dev tool, two passes:
+   *   1. Green sphere at every mesh node with ≤8 triangles — OWLib entity marker
+   *      quads (health packs, item markers, triggers).  Logged as `[marker]`.
+   *   2. With {@link MapDescriptor#debugEntityTypes}: magenta sphere at every
+   *      OWLib entity node of those types — catches pure-EMPTY entities (e.g.
+   *      0345 spawn volumes) that carry no mesh and are invisible to pass 1.
+   *      Logged as `[entity]`.
+   * Uses world positions so parent rotations are handled correctly.
    */
   private renderDebugMarkers(scene: THREE.Scene, root: THREE.Object3D): void {
     const geo = new THREE.SphereGeometry(0.3, 6, 6)
@@ -260,13 +289,31 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       marker.position.copy(pos)
       scene.add(marker)
       this.debugMarkerMeshes.push(marker)
-      // Include parent entity node name — OWLib entity nodes are named "Entity <HexId>.<instance>"
+      // Parent entity node name — convention "00000000<TypeHex4><Instance3>" (see entityScan.ts).
       const entityNode = mesh.parent?.name ?? 'unknown'
       console.debug(
         `[marker] entity=${entityNode.padEnd(24)} mesh=${mesh.name.padEnd(40)} x=${pos.x.toFixed(2).padStart(7)}  y=${pos.y.toFixed(2).padStart(7)}  z=${pos.z.toFixed(2).padStart(7)}`,
       )
     })
     console.debug(`[marker] total: ${this.debugMarkerMeshes.length} marker spheres rendered`)
+
+    const entityTypes = this.map?.debugEntityTypes
+    if (entityTypes?.length) {
+      root.updateWorldMatrix(true, true)
+      const nodes = extractEntityNodes(root, entityTypes)
+      const eGeo = new THREE.SphereGeometry(0.4, 8, 8)
+      const eMat = new THREE.MeshBasicMaterial({ color: 0xff00ff })
+      for (const n of nodes) {
+        const marker = new THREE.Mesh(eGeo, eMat)
+        marker.position.copy(n.position)
+        scene.add(marker)
+        this.debugMarkerMeshes.push(marker)
+        console.debug(
+          `[entity] type=${n.entityType} instance=${String(n.instance).padStart(3)} x=${n.position.x.toFixed(2).padStart(7)}  y=${n.position.y.toFixed(2).padStart(7)}  z=${n.position.z.toFixed(2).padStart(7)}`,
+        )
+      }
+      console.debug(`[entity] total: ${nodes.length} entity-node markers rendered (types: ${entityTypes.join(', ')})`)
+    }
   }
 
   protected override onBeforeGameplayTick(_simDelta: number, _ctx: ThreeContext): void {

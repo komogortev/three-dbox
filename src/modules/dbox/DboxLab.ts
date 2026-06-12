@@ -50,9 +50,15 @@ interface SlamApex {
  */
 export class DoomfistLab implements IAbilityLab {
   private pendingRocketPunchHoldS: number | null = null
-  private lastPunchMs = -1e9
-  private lastUppercutMs = -1e9
-  private lastSlamMs = -1e9
+  /**
+   * Accumulated sim time in seconds, advanced in {@link afterGameplayTick}.
+   * All cooldown bookkeeping reads this instead of wall-clock so pause freezes
+   * cooldowns and time-scale slows them in step with the round timer (A1/F2).
+   */
+  private simTimeS = 0
+  private lastPunchSimS = -1e9
+  private lastUppercutSimS = -1e9
+  private lastSlamSimS = -1e9
   private slamHoldActive = false
   private slamSuppressNextKeyUp = false
   private slamPreviewLine: THREE.Line | null = null
@@ -142,6 +148,7 @@ export class DoomfistLab implements IAbilityLab {
   }
 
   afterGameplayTick(simDelta: number, ctx: ThreeContext): void {
+    this.simTimeS += simDelta
     if (this.slamHoldActive) {
       const snap = this.host.getPlayerController().getSnapshot()
       if (snap.waterMode !== null) {
@@ -165,6 +172,8 @@ export class DoomfistLab implements IAbilityLab {
     this.pendingRocketPunchHoldS = null
   }
 
+  // heldSecondsRaw is wall-clock by nature (pointer events) — charging continues
+  // during pause.  Deliberate: only cooldown bookkeeping is on sim time.
   private onRocketPunchChargeEnd(heldSecondsRaw: number): void {
     const heldS = Math.min(
       this.cfg.rocketPunch.chargeMaxS,
@@ -219,8 +228,8 @@ export class DoomfistLab implements IAbilityLab {
   }
 
   private executeSlamOnKeyRelease(): void {
-    const t = performance.now() * 0.001
-    if (t - this.lastSlamMs < this.cfg.seismicSlam.cooldownS) return
+    const t = this.simTimeS
+    if (t - this.lastSlamSimS < this.cfg.seismicSlam.cooldownS) return
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return
     const ctx = this.slamHostCtx
@@ -250,7 +259,7 @@ export class DoomfistLab implements IAbilityLab {
     })
     this.applySlamToBlobsInCone(land.x, land.z, land.ySurf, f)
 
-    this.lastSlamMs = t
+    this.lastSlamSimS = t
   }
 
   /**
@@ -554,8 +563,8 @@ export class DoomfistLab implements IAbilityLab {
 
   private tryUppercut(): void {
     this.cancelSlamDueToInterrupt()
-    const t = performance.now()
-    if (t * 0.001 - this.lastUppercutMs < this.cfg.risingUppercut.cooldownS) return
+    const t = this.simTimeS
+    if (t - this.lastUppercutSimS < this.cfg.risingUppercut.cooldownS) return
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return
 
@@ -567,7 +576,7 @@ export class DoomfistLab implements IAbilityLab {
       verticalBlend: 'replace',
     })
     this.applyUppercutToNearbyBlobs()
-    this.lastUppercutMs = t * 0.001
+    this.lastUppercutSimS = t
   }
 
   private flushPendingRocketPunch(): void {
@@ -584,7 +593,7 @@ export class DoomfistLab implements IAbilityLab {
 
   /** Snapshot of ability cooldown state for HUD display. */
   getHudAbilities(): AbilityHudEntry[] {
-    const now = performance.now() * 0.001
+    const now = this.simTimeS
 
     const cdLeft = (lastUse: number, cd: number): number =>
       Math.max(0, cd - (now - lastUse))
@@ -603,7 +612,7 @@ export class DoomfistLab implements IAbilityLab {
         name: 'Rocket Punch',
         key: 'RMB',
         cooldownMax: this.cfg.rocketPunch.cooldownS,
-        cooldownLeft: cdLeft(this.lastPunchMs, this.cfg.rocketPunch.cooldownS),
+        cooldownLeft: cdLeft(this.lastPunchSimS, this.cfg.rocketPunch.cooldownS),
         isActive: this.pendingRocketPunchHoldS != null,
       },
       {
@@ -611,7 +620,7 @@ export class DoomfistLab implements IAbilityLab {
         name: 'Rising Uppercut',
         key: 'Q',
         cooldownMax: this.cfg.risingUppercut.cooldownS,
-        cooldownLeft: cdLeft(this.lastUppercutMs, this.cfg.risingUppercut.cooldownS),
+        cooldownLeft: cdLeft(this.lastUppercutSimS, this.cfg.risingUppercut.cooldownS),
         isActive: false,
       },
       {
@@ -619,15 +628,15 @@ export class DoomfistLab implements IAbilityLab {
         name: 'Seismic Slam',
         key: 'E',
         cooldownMax: this.cfg.seismicSlam.cooldownS,
-        cooldownLeft: cdLeft(this.lastSlamMs, this.cfg.seismicSlam.cooldownS),
+        cooldownLeft: cdLeft(this.lastSlamSimS, this.cfg.seismicSlam.cooldownS),
         isActive: this.slamHoldActive,
       },
     ]
   }
 
   private fireRocketPunchFromHoldSeconds(heldS: number): boolean {
-    const t = performance.now() * 0.001
-    if (t - this.lastPunchMs < this.cfg.rocketPunch.cooldownS) return false
+    const t = this.simTimeS
+    if (t - this.lastPunchSimS < this.cfg.rocketPunch.cooldownS) return false
     const snap = this.host.getPlayerController().getSnapshot()
     if (snap.waterMode !== null) return false
 
@@ -646,7 +655,7 @@ export class DoomfistLab implements IAbilityLab {
     this.host.getPlayerController().applyVerticalAbilityImpulse(liftVy, this.host.getCharacter(), {
       verticalBlend: 'replace',
     })
-    this.lastPunchMs = t
+    this.lastPunchSimS = t
     return true
   }
 }
