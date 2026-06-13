@@ -23,6 +23,13 @@ export class DboxCharacterEntity {
   private readonly headOnAngleRad: number
   private physicsWorld: PhysicsWorld | null = null
 
+  /** EX-1 diagnostics — last walking-resolve Rapier step lift / wall push depth
+   *  (metres), reset each `resolveWalkingCollision()`.  Read by the `?navdebug`
+   *  logger to correlate stair pops with the lift that caused them.  Zero overhead;
+   *  feeds the EX-2 step-smoothing fix. */
+  lastStepLiftY = 0
+  lastWallPushDepth = 0
+
   /** Minimum Rapier penetration depth for an XZ wall push to fire.
    *  Contacts shallower than this are stair-riser grazes — skip them so the
    *  terrain sampler can snap the player down on descent without fighting the push. */
@@ -156,6 +163,8 @@ export class DboxCharacterEntity {
     let cy = character.position.y
     let cz = character.position.z
     let corrected = false
+    this.lastStepLiftY = 0
+    this.lastWallPushDepth = 0
 
     for (const wall of this.walls) {
       const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
@@ -192,10 +201,12 @@ export class DboxCharacterEntity {
           // Full depth lift (not depth * normalY) for guaranteed step clearance.
           // depth * normalY undershot on steps with shallow normals (e.g. 0.35 → 35% lift).
           cy += phit.depth
+          this.lastStepLiftY = phit.depth
           corrected = true
         } else if (phit.depth > DboxCharacterEntity.RAPIER_WALL_MIN_DEPTH) {
           cx += phit.normal.x * phit.depth
           cz += phit.normal.z * phit.depth
+          this.lastWallPushDepth = phit.depth
           corrected = true
         }
       }
