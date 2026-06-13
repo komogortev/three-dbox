@@ -23,6 +23,7 @@ import { extractHealthPackSlots } from '@/items/HealthPackExtractor'
 import { HealthPackManager } from '@/items/HealthPackManager'
 import { RoundManager } from '@/round/RoundManager'
 import type { RoundSnapshot } from '@/round/types'
+import { hasQueryFlag, queryNumber, CountingSampler, PerfOverlay } from '@/debug/diagnostics'
 
 
 export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
@@ -61,6 +62,17 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
   private debugMarkerMeshes: THREE.Mesh[] = []
   private healthPackManager: HealthPackManager | null = null
   private readonly roundManager = new RoundManager()
+
+  // ── EX-1 diagnostics (flag-gated; no-op without ?perf / ?navdebug) ──────
+  private readonly perfEnabled = hasQueryFlag('perf')
+  private readonly navDebugEnabled = hasQueryFlag('navdebug')
+  private perfOverlay: PerfOverlay | null = null
+  private countingSampler: CountingSampler | null = null
+  private unregisterPerf: (() => void) | null = null
+  /** The terrain probe-origin callback, captured so ?navdebug can read it. */
+  private navProbeFromY: (() => number) | null = null
+  private navLogAccum = 0
+  private navLastY = 0
 
   constructor(options: DboxSceneModuleOptions = {}) {
     const { champion = DOOMFIST_CONFIG, map, ...rest } = options
@@ -122,6 +134,22 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
     await super.onMount(container, context)
 
+    // ── Renderer quick wins (EX-1.2) — ships unconditionally ──────────────
+    // ThreeModule sets an UNCAPPED setPixelRatio(devicePixelRatio); on hi-DPI
+    // displays that is the largest single perf lever (fragment work scales with
+    // ratio²).  Cap at 2; `?pixelratio=N` overrides so the owner can A/B uncapped.
+    // setPixelRatio re-applies the drawing-buffer size internally, so calling it
+    // post-mount is safe.  toneMapping/shadowMap left at engine defaults here and
+    // logged for the EX-1 audit — tuning them is EX-3's job (avoid visual drift now).
+    const beforeRatio = ctx.renderer.getPixelRatio()
+    const cappedRatio = queryNumber('pixelratio') ?? Math.min(window.devicePixelRatio || 1, 2)
+    ctx.renderer.setPixelRatio(cappedRatio)
+    console.debug(
+      `[dbox/perf] pixelRatio ${beforeRatio} → ${cappedRatio} (devicePixelRatio=${window.devicePixelRatio}); ` +
+      `toneMapping=${ctx.renderer.toneMapping} exposure=${ctx.renderer.toneMappingExposure}; ` +
+      `shadowMap.enabled=${ctx.renderer.shadowMap.enabled} type=${ctx.renderer.shadowMap.type}`,
+    )
+
     if (this.map && mapScene && this.physicsWorld) {
       this.mapRoot = mapScene
       ctx.scene.add(this.mapRoot)
@@ -165,7 +193,12 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
       // multi-level geometry while clamping to 1.0 for spawn self-correction.
       const character = this.getCharacter()
       const controller = this.getPlayerController()
-      this.setSampler(new MeshTerrainSampler(terrainMeshes, null, () => Math.max(character.position.y + 1.0, 1.0)))
+      const probeFromY = () => Math.max(character.position.y + 1.0, 1.0)
+      this.navProbeFromY = probeFromY
+      const baseSampler = new MeshTerrainSampler(terrainMeshes, null, probeFromY)
+      // ?perf wraps the sampler to count raycasts/frame; production uses it raw.
+      this.countingSampler = this.perfEnabled ? new CountingSampler(baseSampler) : null
+      this.setSampler(this.countingSampler ?? baseSampler)
 
       // Pick spawn: random from spawnPoints list if provided, fallback to spawnX/Z.
       // (SP-2 replaces the random pick with a round-robin cursor + respawn path.)
@@ -241,11 +274,71 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     this.lab.mount(container, context.eventBus, ctx, { spawnBlobs: !mapLoaded })
     this.lab.setWallGeometry(activeWalls, activeBoxes)
 
+    // ── Perf monitor (EX-1.1) — 1 Hz renderer.info + frame-time overlay ───
+    if (this.perfEnabled) this.setupPerfMonitor(container, ctx)
+
     // Start the pre-round countdown after the scene is fully mounted.
     this.roundManager.start()
   }
 
+  /**
+   * `?perf` — registers a per-frame system that aggregates frame time and snapshots
+   * `renderer.info` (draw calls / triangles / programs / GPU memory) + sampler
+   * raycasts once per second, into both an on-screen overlay and `console.debug`.
+   * The system runs before render, so `renderer.info` reflects the prior frame —
+   * a stable per-frame figure.  Unregistered + overlay disposed in onUnmount.
+   */
+  private setupPerfMonitor(container: HTMLElement, ctx: ThreeContext): void {
+    this.perfOverlay = new PerfOverlay(container)
+    // Diagnosis handle (dev-only, ?perf) — lets the live preview session read
+    // renderer.info and force one correctly-sized frame even when an unfocused
+    // headless tab throttles RAF. Cleared in onUnmount to avoid retaining GPU refs.
+    ;(window as unknown as Record<string, unknown>).__dboxPerf = {
+      renderer: ctx.renderer,
+      scene: ctx.scene,
+      camera: ctx.camera,
+      getSamplerCount: () => this.countingSampler?.takeCount() ?? 0,
+    }
+    let acc = 0
+    let frames = 0
+    let maxFrame = 0
+    let last = performance.now()
+    this.unregisterPerf = ctx.registerSystem('dbox-perf', () => {
+      const now = performance.now()
+      const ft = now - last
+      last = now
+      acc += ft
+      frames++
+      if (ft > maxFrame) maxFrame = ft
+      if (acc < 1000) return
+      const info = ctx.renderer.info
+      const fps = (frames * 1000) / acc
+      const avg = acc / frames
+      const samples = this.countingSampler?.takeCount() ?? 0
+      const text =
+        `dbox perf  dpr ${(window.devicePixelRatio || 1).toFixed(2)} → cap ${ctx.renderer.getPixelRatio()}\n` +
+        `fps ${fps.toFixed(0)}   frame avg ${avg.toFixed(1)}ms  max ${maxFrame.toFixed(1)}ms\n` +
+        `draws ${info.render.calls}   tris ${(info.render.triangles / 1000).toFixed(0)}k   progs ${info.programs?.length ?? '?'}\n` +
+        `geo ${info.memory.geometries}   tex ${info.memory.textures}\n` +
+        `sampler ${samples}/s  (${(samples / Math.max(frames, 1)).toFixed(1)}/frame)`
+      this.perfOverlay?.set(text)
+      console.debug(`[dbox/perf] ${text.replace(/\n/g, ' | ')}`)
+      acc = 0
+      frames = 0
+      maxFrame = 0
+    })
+  }
+
   protected override async onUnmount(): Promise<void> {
+    this.unregisterPerf?.()
+    this.unregisterPerf = null
+    this.perfOverlay?.dispose()
+    this.perfOverlay = null
+    this.countingSampler = null
+    this.navProbeFromY = null
+    if ((window as unknown as Record<string, unknown>).__dboxPerf) {
+      delete (window as unknown as Record<string, unknown>).__dboxPerf
+    }
     this.roundManager.reset()
     this.lab.unmount()
     for (const m of this.arenaMeshes) m.parent?.remove(m)
@@ -336,6 +429,41 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
     // Round timer — advances only during countdown and playing states.
     this.roundManager.tick(simDelta)
+
+    if (this.navDebugEnabled) this.logNavDebug(simDelta)
+  }
+
+  /**
+   * `?navdebug` (EX-1.3) — correlate stair/fall-through glitches with the numbers.
+   * Logs at ~10 Hz, and immediately on any single-tick Y jump > 25 cm (a pop or a
+   * fall), the final post-correction player Y vs the terrain-sampler floor, the
+   * probe-Y origin the sampler casts from, and the step lift / wall push the entity
+   * applied this tick.  `gap` = feet (Y − capsule half-height) minus floorY:
+   * ≈0 grounded · large positive = airborne · negative = sunk through the floor.
+   */
+  private logNavDebug(simDelta: number): void {
+    const character = this.getCharacter()
+    const y = character.position.y
+    const dY = y - this.navLastY
+    this.navLogAccum += simDelta
+    const jump = Math.abs(dY) > 0.25
+    if (this.navLogAccum < 0.1 && !jump) {
+      this.navLastY = y
+      return
+    }
+    this.navLogAccum = 0
+    const x = character.position.x
+    const z = character.position.z
+    const floorY = this.sampleTerrainSurfaceY(x, z)
+    const probeY = this.navProbeFromY?.() ?? NaN
+    const gap = y - PLAYER_CAPSULE_HALF_HEIGHT - floorY
+    console.debug(
+      `[dbox/nav]${jump ? ' JUMP' : ''} ` +
+      `y=${y.toFixed(3)} dY=${dY.toFixed(3)} floorY=${floorY.toFixed(3)} gap=${gap.toFixed(3)} ` +
+      `probeY=${probeY.toFixed(2)} lift=${(this.entity?.lastStepLiftY ?? 0).toFixed(3)} ` +
+      `push=${(this.entity?.lastWallPushDepth ?? 0).toFixed(3)} xz=(${x.toFixed(1)},${z.toFixed(1)})`,
+    )
+    this.navLastY = y
   }
 
   /** Returns a pure-data snapshot of the current round state for UI polling. */
