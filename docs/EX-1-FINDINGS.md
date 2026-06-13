@@ -136,6 +136,8 @@ While instrumenting I hit a black screen: the engine container (`<div class="abs
 
 This is a **race**: if `ThreeModule` reads `clientHeight` *before* the canvas establishes a height, the container is already `position:relative` and reports 0. The owner's real browser evidently wins the race (they playtested a rendered scene); the headless preview loses it reliably. Memory records a 2026-06-02 fix to `TouchProvider`'s **unmount** restore — this is the **mount-side** sibling. **Not in EX-1 scope** (the cap/instrumentation are dbox-local; this lives in `@base/input` or in dbox's container styling), but it is a real robustness bug and a strong follow-up candidate.
 
+> **Resolved 2026-06-13** (follow-up session). Fixed in `@base/input` `TouchProvider.mount()`: the old guard checked the **inline** `style.position` (empty for a class-positioned element, so it still stamped `relative`); it now checks the **computed** position — `if (getComputedStyle(container).position === 'static') container.style.position = 'relative'`. The overlay (`position:absolute; inset:0`) only needs a positioning context when the container has none; any container already `absolute`/`relative`/`fixed`/`sticky` is left untouched. Verified live on `/dbox?arena=chateau-guillard`: container stays computed `absolute` with no inline position, `clientHeight` 1295 px (was 0), canvas built non-zero (1111×1295), touch overlay still mounts and fills the play area. `@base/input` rebuilt + three-dbox typecheck clean. The static-container path is unchanged, so three-dreams / threejs-engine-dev are behavior-unchanged.
+
 ---
 
 ## Decisions
