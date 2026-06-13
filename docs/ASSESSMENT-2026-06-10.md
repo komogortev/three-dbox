@@ -109,5 +109,7 @@ C1–C4 by trigger
 ```
 
 > **Addendum 2026-06-10 (post-assessment spawn scoping):** SP-1 (decouple player spawn data from health-pack entities; includes A2 implementation as `packRotationCounter`) and SP-2 (instant respawn with spawn rotation at player HP 0 — the player-death behaviour this plan left unspecified) spliced in per `PLAN-SPAWN-2026-06-10.md`. Locked: V1 = instant respawn with rotation; death cam = Phase 5.
+>
+> **Addendum 2026-06-12 (multi-champion scope decision):** C2 pulled forward ahead of B1 by explicit direction call — multi-champion is near-term intent (trigger "Champion #2" declared fired), and B1 as specced would write blob HP into the exact code C2 extracts. Plan: `PLAN-C2-CHAMPIONS-2026-06-12.md`. Sequencing now: **C2 → B1+B2+SP-2 → B3+B4 → T-B18**. Maps axis needs no system work (registry + descriptor pipeline sufficient); per-arena counter keying rides C2. V1-publish gap + leverage analysis: `GAP-V1-PUBLISH-2026-06-12.md`.
 
 After T-B18: pause menu (Phase 4 remainder) → Phase 2 close leftovers (crosshair, hit-stop/shake T-B10, ability remapping UI, uppercut ceiling clamp) → Phase 2B / Phase 5 per ROADMAP.md.
