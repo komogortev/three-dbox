@@ -35,6 +35,18 @@ export class DboxCharacterEntity {
    *  terrain sampler can snap the player down on descent without fighting the push. */
   private static readonly RAPIER_WALL_MIN_DEPTH = 0.05
 
+  /** EX-2.1 anti-tunnelling. End-of-tick resolved position, fed to the next
+   *  tick's swept wall cast so a fast carry move (rocket punch ≈ 152 m/s ≈
+   *  2.5 m/tick vs radius 0.4) can't pass through a thin wall between the
+   *  overlap probes that only test the end position. */
+  private lastPosition: THREE.Vector3 | null = null
+  /** Sweep only when a tick's move exceeds this fraction of playerRadius —
+   *  walking (≤0.09 m/tick) never pays the extra cast; carry abilities do. */
+  private static readonly SWEEP_MIN_MOVE_FRACTION = 0.5
+  /** Back the clamped contact off the wall by this skin (m) so the follow-up
+   *  overlap probe doesn't immediately re-fire on the same surface. */
+  private static readonly SWEEP_BACKOFF = 0.02
+
   constructor(
     private readonly getController: () => PlayerController,
     private readonly getCharacter: () => THREE.Object3D,
@@ -78,6 +90,36 @@ export class DboxCharacterEntity {
     let corrected = false
     let slideNx = 0
     let slideNz = 0
+
+    // EX-2.1 anti-tunnelling swept resolve — runs before the overlap probes.
+    // A carry move faster than ~2×radius/tick clips fully through a thin wall
+    // before `spherePenetration` (overlap-only) ever sees it. When this tick's
+    // move is large enough to risk that, sweep last→current and clamp at the
+    // first wall contact. Gated by move distance, so walking never pays the cast.
+    if (this.physicsWorld && this.lastPosition) {
+      const moveX = cx - this.lastPosition.x
+      const moveY = cy - this.lastPosition.y
+      const moveZ = cz - this.lastPosition.z
+      const moveDist = Math.hypot(moveX, moveY, moveZ)
+      if (moveDist > this.cfg.playerRadius * DboxCharacterEntity.SWEEP_MIN_MOVE_FRACTION) {
+        const swept = this.physicsWorld.shapeCastSphere(
+          this.lastPosition,
+          new THREE.Vector3(cx, cy, cz),
+          this.cfg.playerRadius,
+        )
+        // Wall only — skip floor/ceiling hits (|normal.y| ≥ 0.7) so fast vertical
+        // travel (slam) and ground-skim punches aren't clamped by the sweep.
+        if (swept && Math.abs(swept.normal.y) < 0.7) {
+          const back = DboxCharacterEntity.SWEEP_BACKOFF
+          cx = this.lastPosition.x + moveX * swept.toi + swept.normal.x * back
+          cy = this.lastPosition.y + moveY * swept.toi + swept.normal.y * back
+          cz = this.lastPosition.z + moveZ * swept.toi + swept.normal.z * back
+          slideNx = swept.normal.x
+          slideNz = swept.normal.z
+          corrected = true
+        }
+      }
+    }
 
     for (const wall of this.walls) {
       const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
@@ -218,5 +260,11 @@ export class DboxCharacterEntity {
       character.position.z = cz
       controller.syncPosition(cx, cy, cz)
     }
+
+    // Record the final resolved position for next tick's anti-tunnel sweep
+    // (EX-2.1). resolveWalkingCollision runs last in onAfterGameplayTick, so
+    // character.position here is the authoritative end-of-tick position.
+    if (!this.lastPosition) this.lastPosition = new THREE.Vector3()
+    this.lastPosition.set(character.position.x, character.position.y, character.position.z)
   }
 }
