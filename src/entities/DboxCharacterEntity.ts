@@ -35,6 +35,15 @@ export class DboxCharacterEntity {
    *  terrain sampler can snap the player down on descent without fighting the push. */
   private static readonly RAPIER_WALL_MIN_DEPTH = 0.05
 
+  /** Lift the feet collision sphere this far above the grounded feet so the Rapier
+   *  probe ignores floor-tile relief / seams (the top-down `MeshTerrainSampler`
+   *  already owns floor height). Without it the feet sphere bottom sits AT floor
+   *  level and catches every tile edge while walking flat ground → micro step-lifts
+   *  ("stumble") and XZ pushes ("stuck"). Keep below real step height (~0.15 m) so
+   *  genuine steps are still caught. Tunable live via ?navdebug (logs lift/push).
+   *  EX-2 floor-nav smoothing, 2026-06-14. */
+  private static readonly FOOT_PROBE_CLEARANCE = 0.12
+
   /** EX-2.1 anti-tunnelling. End-of-tick resolved position, fed to the next
    *  tick's swept wall cast so a fast carry move (rocket punch ≈ 152 m/s ≈
    *  2.5 m/tick vs radius 0.4) can't pass through a thin wall between the
@@ -146,7 +155,7 @@ export class DboxCharacterEntity {
     // Rapier trimesh — dual-sphere probe (feet + head) catches thin exterior walls
     // that a single centre-sphere misses. Ignore floor hits (|normalY| >= 0.7).
     if (this.physicsWorld) {
-      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius + DboxCharacterEntity.FOOT_PROBE_CLEARANCE, cz)
       const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
 
       const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)
@@ -228,7 +237,7 @@ export class DboxCharacterEntity {
 
     // Rapier trimesh — dual-sphere (feet + head) + step-climb for walking collision.
     if (this.physicsWorld) {
-      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius + DboxCharacterEntity.FOOT_PROBE_CLEARANCE, cz)
       const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
 
       const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)

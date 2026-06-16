@@ -3,7 +3,6 @@ import type { EngineContext } from '@base/engine-core'
 import type { ThreeContext } from '@base/threejs-engine'
 import type { SceneDescriptor } from '@base/scene-builder'
 import { PhysicsWorld } from '@base/physics'
-import { PLAYER_CAPSULE_HALF_HEIGHT } from '@base/player-three'
 import { CALIBRATION_POOL_BOUNDS } from '@/calibration/calibrationLayout'
 import { SandboxSceneModule } from './SandboxSceneModule'
 import { DoomfistLab } from './dbox/DboxLab'
@@ -43,6 +42,10 @@ export type DboxSceneModuleOptions = Partial<ThirdPersonSceneConfig> & {
  * id when map #2 lands.
  */
 let packRotationCounter = 0
+
+/** Phase-0 remount diagnostic: counts map-mode spawns this SPA session so the
+ *  ?navdebug SPAWN trace can be diffed first-mount vs remount. */
+let spawnMountSeq = 0
 
 /**
  * Sandbox calibration world + composed {@link DboxLab} (abilities, slam preview, NPC blobs)
@@ -153,6 +156,15 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     if (this.map && mapScene && this.physicsWorld) {
       this.mapRoot = mapScene
       ctx.scene.add(this.mapRoot)
+      // Explicit world-matrix barrier (structural — fixes remount mis-grounding).
+      // The terrain sampler, spawn raycast, trimesh extraction, and health-pack /
+      // entity world-position reads ALL require the map's world matrices to be
+      // current. Previously that was only an implicit side effect of addStaticMesh
+      // (extractTrimesh calls updateWorldMatrix) plus scattered late updates, so
+      // grounding correctness depended on call order / render timing and could
+      // differ between first mount and remount. Own it here, once, before any
+      // consumer runs — everything downstream then samples correct world geometry.
+      this.mapRoot.updateMatrixWorld(true)
       this.physicsWorld.addStaticMesh(this.mapRoot, this.map.physicsFilter)
     }
 
@@ -191,6 +203,15 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
 
       // Probe strategy: max(characterY + 1.0, 1.0) — tracks player elevation for
       // multi-level geometry while clamping to 1.0 for spawn self-correction.
+      // NOTE (EX-2.2, reverted 2026-06-14): a LOWER origin (y−0.3 / the sampler's
+      // y−0.5 "below the ceiling" contract) was tried to kill the stair/overhang
+      // pop, but it REGRESSES grounding and was reverted. A probe that tracks
+      // position.y from below chases the character DOWN on any dip and can't
+      // re-acquire the floor → grounding diverges, the avatar sinks/oscillates,
+      // the camera lurches (looks like a load "flicker"). The high origin here is
+      // self-correcting (~1.85 m recovery zone above the floor). A real fix must
+      // be anti-divergent (clamp the origin to the last known floor, not chase
+      // position.y) AND owner-verified on stairs — see docs/SPRINT-EX-V1.md.
       const character = this.getCharacter()
       const controller = this.getPlayerController()
       const probeFromY = () => Math.max(character.position.y + 1.0, 1.0)
@@ -210,10 +231,40 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
         spawnZ = pt.z
         console.debug(`[DboxSceneModule] spawn at '${pt.label}' (${pt.x.toFixed(1)}, ${pt.z.toFixed(1)})`)
       }
+      // Single grounding source of truth (structural): spawn uses the SAME offset
+      // the per-tick steady grounder uses (`characterTerrainYOffset` — feet-aligned
+      // GLB = 0), NOT a hardcoded capsule half-height. Previously spawn placed the
+      // character 0.85 m high and the first tick snapped it down; two disagreeing
+      // offsets is itself a class of mis-grounding. Now spawn == steady.
       const floorY = this.sampleTerrainSurfaceY(spawnX, spawnZ)
-      const spawnY = floorY + PLAYER_CAPSULE_HALF_HEIGHT
+      const spawnY = floorY + this.characterTerrainYOffset
+      const preSpawnY = character.position.y
       character.position.set(spawnX, spawnY, spawnZ)
       controller.syncPosition(spawnX, spawnY, spawnZ)
+
+      // Dev guard: a non-finite floorY means the sampler returned garbage → the
+      // character would spawn at an invalid Y. We deliberately do NOT flag
+      // floorY===0: the Château corridor floor is legitimately ~Y=0, so that would
+      // cry wolf (and a real miss→0 is indistinguishable from a legit 0 floor by
+      // value). Actual mis-grounding shows up in the ?navdebug `gap` (≈0 = feet on
+      // floor; large = floating; very negative = sunk/under the map).
+      if (!Number.isFinite(floorY)) {
+        console.error(
+          `[DboxSceneModule] spawn floorY is non-finite (${floorY}) at (${spawnX.toFixed(1)},${spawnZ.toFixed(1)}) ` +
+          `— terrain sampler failed; character would spawn at an invalid Y (terrainMeshes=${terrainMeshes.length}).`,
+        )
+      }
+      // Phase-0 one-shot spawn trace (only with ?navdebug). Diff first mount vs
+      // remount to see which input changes (floorY / offset / spawnY).
+      if (this.navDebugEnabled) {
+        spawnMountSeq++
+        console.debug(
+          `[dbox/nav] SPAWN mount#${spawnMountSeq} xz=(${spawnX.toFixed(1)},${spawnZ.toFixed(1)}) ` +
+          `preSpawnY=${preSpawnY.toFixed(3)} floorY=${floorY.toFixed(3)} ` +
+          `offset=${this.characterTerrainYOffset.toFixed(3)} spawnY=${spawnY.toFixed(3)} ` +
+          `terrainMeshes=${terrainMeshes.length}`,
+        )
+      }
 
       // ── Display overrides (opacity / visibility per zone) ─────────────────
       // Second pass — runs on ALL meshes including physics-excluded ones, so
@@ -456,7 +507,7 @@ export class DboxSceneModule extends SandboxSceneModule implements GameplayLabHo
     const z = character.position.z
     const floorY = this.sampleTerrainSurfaceY(x, z)
     const probeY = this.navProbeFromY?.() ?? NaN
-    const gap = y - PLAYER_CAPSULE_HALF_HEIGHT - floorY
+    const gap = y - this.characterTerrainYOffset - floorY
     console.debug(
       `[dbox/nav]${jump ? ' JUMP' : ''} ` +
       `y=${y.toFixed(3)} dY=${dY.toFixed(3)} floorY=${floorY.toFixed(3)} gap=${gap.toFixed(3)} ` +
