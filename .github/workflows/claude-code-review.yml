@@ -1,0 +1,37 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
+          prompt: |
+            Review this pull request for the three-dbox combat sandbox (Vue 3 +
+            Three.js + @base/* packages).
+            Focus on:
+            - Correctness bugs, especially in the physics/movement tick order
+              (two Y-writers in a tick was a known failure class)
+            - Per-frame allocations or work added inside the render loop
+            - Resource leaks (GPU geometry/materials must be disposed on unmount)
+            - Violations of the package boundary rule (@base/* packages are
+              consumed, never edited in this repo)
+            Report only findings you are confident in, with file:line references.
+            If the diff is clean, say so briefly.
