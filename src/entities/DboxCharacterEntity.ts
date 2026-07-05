@@ -23,10 +23,38 @@ export class DboxCharacterEntity {
   private readonly headOnAngleRad: number
   private physicsWorld: PhysicsWorld | null = null
 
+  /** EX-1 diagnostics — last walking-resolve Rapier step lift / wall push depth
+   *  (metres), reset each `resolveWalkingCollision()`.  Read by the `?navdebug`
+   *  logger to correlate stair pops with the lift that caused them.  Zero overhead;
+   *  feeds the EX-2 step-smoothing fix. */
+  lastStepLiftY = 0
+  lastWallPushDepth = 0
+
   /** Minimum Rapier penetration depth for an XZ wall push to fire.
    *  Contacts shallower than this are stair-riser grazes — skip them so the
    *  terrain sampler can snap the player down on descent without fighting the push. */
   private static readonly RAPIER_WALL_MIN_DEPTH = 0.05
+
+  /** Lift the feet collision sphere this far above the grounded feet so the Rapier
+   *  probe ignores floor-tile relief / seams (the top-down `MeshTerrainSampler`
+   *  already owns floor height). Without it the feet sphere bottom sits AT floor
+   *  level and catches every tile edge while walking flat ground → micro step-lifts
+   *  ("stumble") and XZ pushes ("stuck"). Keep below real step height (~0.15 m) so
+   *  genuine steps are still caught. Tunable live via ?navdebug (logs lift/push).
+   *  EX-2 floor-nav smoothing, 2026-06-14. */
+  private static readonly FOOT_PROBE_CLEARANCE = 0.12
+
+  /** EX-2.1 anti-tunnelling. End-of-tick resolved position, fed to the next
+   *  tick's swept wall cast so a fast carry move (rocket punch ≈ 152 m/s ≈
+   *  2.5 m/tick vs radius 0.4) can't pass through a thin wall between the
+   *  overlap probes that only test the end position. */
+  private lastPosition: THREE.Vector3 | null = null
+  /** Sweep only when a tick's move exceeds this fraction of playerRadius —
+   *  walking (≤0.09 m/tick) never pays the extra cast; carry abilities do. */
+  private static readonly SWEEP_MIN_MOVE_FRACTION = 0.5
+  /** Back the clamped contact off the wall by this skin (m) so the follow-up
+   *  overlap probe doesn't immediately re-fire on the same surface. */
+  private static readonly SWEEP_BACKOFF = 0.02
 
   constructor(
     private readonly getController: () => PlayerController,
@@ -72,6 +100,36 @@ export class DboxCharacterEntity {
     let slideNx = 0
     let slideNz = 0
 
+    // EX-2.1 anti-tunnelling swept resolve — runs before the overlap probes.
+    // A carry move faster than ~2×radius/tick clips fully through a thin wall
+    // before `spherePenetration` (overlap-only) ever sees it. When this tick's
+    // move is large enough to risk that, sweep last→current and clamp at the
+    // first wall contact. Gated by move distance, so walking never pays the cast.
+    if (this.physicsWorld && this.lastPosition) {
+      const moveX = cx - this.lastPosition.x
+      const moveY = cy - this.lastPosition.y
+      const moveZ = cz - this.lastPosition.z
+      const moveDist = Math.hypot(moveX, moveY, moveZ)
+      if (moveDist > this.cfg.playerRadius * DboxCharacterEntity.SWEEP_MIN_MOVE_FRACTION) {
+        const swept = this.physicsWorld.shapeCastSphere(
+          this.lastPosition,
+          new THREE.Vector3(cx, cy, cz),
+          this.cfg.playerRadius,
+        )
+        // Wall only — skip floor/ceiling hits (|normal.y| ≥ 0.7) so fast vertical
+        // travel (slam) and ground-skim punches aren't clamped by the sweep.
+        if (swept && Math.abs(swept.normal.y) < 0.7) {
+          const back = DboxCharacterEntity.SWEEP_BACKOFF
+          cx = this.lastPosition.x + moveX * swept.toi + swept.normal.x * back
+          cy = this.lastPosition.y + moveY * swept.toi + swept.normal.y * back
+          cz = this.lastPosition.z + moveZ * swept.toi + swept.normal.z * back
+          slideNx = swept.normal.x
+          slideNz = swept.normal.z
+          corrected = true
+        }
+      }
+    }
+
     for (const wall of this.walls) {
       const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
       if (hit) {
@@ -97,7 +155,7 @@ export class DboxCharacterEntity {
     // Rapier trimesh — dual-sphere probe (feet + head) catches thin exterior walls
     // that a single centre-sphere misses. Ignore floor hits (|normalY| >= 0.7).
     if (this.physicsWorld) {
-      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius + DboxCharacterEntity.FOOT_PROBE_CLEARANCE, cz)
       const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
 
       const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)
@@ -156,6 +214,8 @@ export class DboxCharacterEntity {
     let cy = character.position.y
     let cz = character.position.z
     let corrected = false
+    this.lastStepLiftY = 0
+    this.lastWallPushDepth = 0
 
     for (const wall of this.walls) {
       const hit = resolveCircleVsPlane(cx, cz, this.cfg.playerRadius, wall)
@@ -177,7 +237,7 @@ export class DboxCharacterEntity {
 
     // Rapier trimesh — dual-sphere (feet + head) + step-climb for walking collision.
     if (this.physicsWorld) {
-      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius, cz)
+      const feetCenter = new THREE.Vector3(cx, cy - PLAYER_CAPSULE_HALF_HEIGHT + this.cfg.playerRadius + DboxCharacterEntity.FOOT_PROBE_CLEARANCE, cz)
       const headCenter = new THREE.Vector3(cx, cy + PLAYER_CAPSULE_HALF_HEIGHT - this.cfg.playerRadius, cz)
 
       const hitFeet = this.physicsWorld.spherePenetration(feetCenter, this.cfg.playerRadius)
@@ -192,10 +252,12 @@ export class DboxCharacterEntity {
           // Full depth lift (not depth * normalY) for guaranteed step clearance.
           // depth * normalY undershot on steps with shallow normals (e.g. 0.35 → 35% lift).
           cy += phit.depth
+          this.lastStepLiftY = phit.depth
           corrected = true
         } else if (phit.depth > DboxCharacterEntity.RAPIER_WALL_MIN_DEPTH) {
           cx += phit.normal.x * phit.depth
           cz += phit.normal.z * phit.depth
+          this.lastWallPushDepth = phit.depth
           corrected = true
         }
       }
@@ -207,5 +269,11 @@ export class DboxCharacterEntity {
       character.position.z = cz
       controller.syncPosition(cx, cy, cz)
     }
+
+    // Record the final resolved position for next tick's anti-tunnel sweep
+    // (EX-2.1). resolveWalkingCollision runs last in onAfterGameplayTick, so
+    // character.position here is the authoritative end-of-tick position.
+    if (!this.lastPosition) this.lastPosition = new THREE.Vector3()
+    this.lastPosition.set(character.position.x, character.position.y, character.position.z)
   }
 }

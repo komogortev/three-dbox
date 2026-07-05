@@ -274,6 +274,11 @@ export class GameplaySceneModule extends BaseModule {
   protected setSampler(s: TerrainSurfaceSampler | undefined): void { this.sampler = s }
   private effectiveRadius = 50
 
+  /** Root-to-feet ground offset for the active character (capsule-centre pivot = 0.85,
+   *  feet-aligned GLB = 0). Set from SceneBuilder at mount; consumed by map-mode spawn
+   *  grounding so spawn uses the SAME offset as the per-tick steady grounder. */
+  protected characterTerrainYOffset = PLAYER_CAPSULE_HALF_HEIGHT
+
   private offInputAction: (() => void) | null = null
   private unregisterSystem: (() => void) | null = null
   private environment: EnvironmentRuntime | null = null
@@ -439,6 +444,7 @@ export class GameplaySceneModule extends BaseModule {
       this.sampler         = result.sampler
       this.effectiveRadius = result.effectiveRadius
       this.player.setTerrainYOffset(result.characterTerrainYOffset)
+      this.characterTerrainYOffset = result.characterTerrainYOffset
       const ch = this.descriptor?.character
       const fp =
         ch?.terrainFootprintRadius ?? (ch?.modelUrl?.trim() ? 0.22 : 0)

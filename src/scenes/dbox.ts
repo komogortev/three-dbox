@@ -6,6 +6,13 @@ import { sandboxScene } from './sandbox'
  * Origin at feet, Armature root with proper skeleton — skinning works with
  * SceneBuilder's modelFitHeight + alignFeet pipeline.
  *
+ * Decimated 2026-06-13 (EX-1.5): 960,108 → 38,404 tris via gltf-transform
+ * `weld` + `simplify --ratio 0.04 --error 0.01`, then re-Draco. The raw Tripo
+ * export was ~73% of total scene geometry — EX-1's #1 perf finding. Skin
+ * weights + joints preserved (40-bone skeleton, mixer-verified live); local
+ * bbox height 1.0 unchanged so modelFitHeight scaling is unaffected. If the
+ * mesh is ever re-decimated, re-verify rig + locomotion clips deform cleanly.
+ *
  * IMPORTANT: Do NOT use `--compress meshopt` for skinned GLBs.
  * `KHR_mesh_quantization` (i16_norm positions) breaks GPU skinning because
  * position normalization to [-1,1] mismatches the inverse bind matrices.
