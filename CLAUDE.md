@@ -38,7 +38,7 @@ A standalone combat sandbox game — OW1 late-era Doomfist physics brawler. Fork
 ## Key conventions
 
 - **link: deps** — all `@base/*` packages resolve via `link:../SHARED/packages/...` (not pnpm workspace protocol)
-- **Physics model — HYBRID** — `@base/player-three` PlayerController carry impulse system drives ALL movement (never Rapier dynamics). `@base/physics` provides a query-only Rapier world: OW-map trimesh wall/step probes in `DboxCharacterEntity` (dual-sphere `spherePenetration`, step-climb on `normal.y > 0.3`). Sandbox arenas use analytic `WallCollider` planes/boxes. Ground = `MeshTerrainSampler` (maps) / `CalibrationTerrainSampler` (sandbox).
+- **Physics model — HYBRID** — `@base/player-three` PlayerController carry impulse system owns **desired** movement + feel (never Rapier *dynamics*). `@base/physics` provides a query-only Rapier world: today, OW-map trimesh wall/step probes in `DboxCharacterEntity` (dual-sphere `spherePenetration`, step-climb on `normal.y > 0.3`). **Planned (EX-2, `docs/PLAN-EX-NAV-RESOLVER-2026-06-19.md`): a kinematic `CharacterMover` (Rapier `KinematicCharacterController`) that collision-*resolves* carry-driven motion in map mode — resolution, not dynamics; carry still computes the desired vector + gravity.** Sandbox arenas use analytic `WallCollider` planes/boxes. Ground = `MeshTerrainSampler` (maps) / `CalibrationTerrainSampler` (sandbox).
 - **Ability system** — `DboxLab` composes into `DboxSceneModule` via `GameplayLabHost` interface. Abilities use `PlayerController.setPlanarCarryVelocity`, `addPlanarCarryImpulse`, `applyVerticalAbilityImpulse`.
 - **Input bindings** — `@base/input` InputModule with `mergeBindings`. Dbox overrides: Q = `ability_primary` (uppercut), E = `ability_secondary` (slam), RMB = rocket punch (custom pointer handler, not InputModule).
 - **Camera** — `close-follow` preset via `@base/camera-three`, Tab toggles FPV/TPV.
@@ -54,4 +54,4 @@ pnpm build        # vue-tsc + vite build
 - Modify `@base/*` packages from this project without explicit instruction (they live in `SHARED/packages/`)
 - Remove or rename the core `DboxLab` / `GameplayLabHost` interface without updating both sides
 - Add narrative/quest content — this is a combat sandbox, not a story game
-- Replace the PlayerController carry system with Rapier dynamics — `@base/physics` stays query-only (collision/step probes); movement feel lives in the carry impulse system
+- Replace the PlayerController carry system with Rapier **dynamics** — `@base/physics` is query / kinematic-resolution only and **never simulates rigidbody dynamics or gravity**; movement feel lives in the carry impulse system. (Rapier's kinematic `KinematicCharacterController` for *collision resolution* of carry-driven motion is allowed — see `docs/PLAN-EX-NAV-RESOLVER-2026-06-19.md`.)
