@@ -5,3 +5,9 @@ dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+
+# Source character GLBs — the 32 MB Doomfist originals stay local. Only the
+# decimated dfist_base.glb (EX-1.5: 960K → 38K tris, skin-preserved) is tracked
+# and shipped; the originals are re-decimation inputs, not build inputs.
+public/models/*.glb
+!public/models/dfist_base.glb
