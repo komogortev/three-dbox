@@ -1,5 +1,16 @@
 # STATE.md — three-dbox
 
+## SNAPSHOT
+Phase: Phase 4 → EX experience-floor → V1 sprint — **PARKED 2026-09-21** on the workspace fork-sync gate (upstream wait, not abandoned) | Last: 2026-07-07 (#41/#14 merged, #7 closed) | Stack: Vue 3 + @base fork + Rapier
+Resume condition: engine-dev P0-2 zone runtime live **and** P0-1 Stage A collision landed → sync (3 SHARED commits behind, clean on `main`, cheap rebuild).
+Working: arena + Château Guillard map with Rapier trimesh collision; Rocket Punch / Seismic Slam / Uppercut; HUD; round structure (T-B17); spawn set; player mesh decimated 960K → 38K tris (EX-1.5); swept anti-tunnelling (EX-2.1); KCC nav-resolver S0 ✅ GO (22/22 + 6/6).
+Broken: no health/damage system · round state is presentational (no input gating, F4) · forked `GameplaySceneModule` predates engine-dev's remount/disposal fixes (F8) · `isLandingTooHigh()` blocks Uppercut landings on upper floors · fall-through fix awaits owner playtest.
+Blocker: none of its own — waits on the fork-sync gate.
+Next (on resume): S1 `?kcc` A/B → consolidated owner playtest (`docs/PLAYTEST-CHECKLIST-2026-07-05.md`) → S2 patchwork delete → EX-3 lighting → EX-4 audio → C2 → B1+B2+SP-2 → B3+B4 → T-B18. Tracker `docs/SPRINT-EX-V1.md`.
+History: detail and prior phases below; full history in git.
+
+---
+
 ## Current phase
 
 **Phase 2: Character & Input Polish** — IN PROGRESS (2026-04-13), **DEFERRED** pending Phase 3 physics foundation.
