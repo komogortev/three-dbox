@@ -4,6 +4,8 @@ A physics-driven third-person combat sandbox: charge-and-release abilities, aeri
 real map with trimesh collision. Built on the `@base` Vue 3 + Three.js game platform
 ([vue-three-base-packages](https://github.com/komogortev/vue-three-base-packages)).
 
+**[Live demo](https://komogortev.github.io/three-dbox/)** — runs in the browser; keyboard and mouse.
+
 ![The calibration arena: ability test ramps, round countdown and NPC targets](docs/media/calibration-arena.webp)
 
 > **Status:** working prototype. Development is paused while the shared platform packages catch up; the
