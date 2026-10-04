@@ -72,3 +72,12 @@ Blizzard Entertainment.
 - [PROJECT.md](./PROJECT.md) — vision and architecture
 - [ROADMAP.md](./ROADMAP.md) — alpha roadmap
 - [STATE.md](./STATE.md) — current state and known issues
+
+## License
+
+The source code is [MIT](./LICENSE) licensed. The MIT licence does **not** cover two assets that depict
+Overwatch content: the map `public/maps/chateau-guillard.glb`, which is derived from the game's map, and the
+character model `public/models/dfist_base.glb`, which was generated with an AI tool (Tripo) from a description
+of the character. The map and the character design remain the property of Blizzard Entertainment (see
+[About this project](#about-this-project)), and the files are included only as calibration references. Other
+bundled third-party files, such as the NPC animation pack and the Draco decoder, keep their own terms.
